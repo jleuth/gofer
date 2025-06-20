@@ -1,0 +1,15 @@
+{
+    "ollama_url": "http://localhost:11434",
+    "enabled_tools": [
+        "terminal",
+        "gui"
+    ],
+    "models": [
+        {
+            "planner": "deepseek-r1:8b",
+            "executor": "deepseek-r1:8b",
+            "reflect": "deepseek-r1:8b",
+            "vision": "gemma3:4b"
+        }
+    ]
+}
