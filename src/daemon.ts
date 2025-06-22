@@ -22,7 +22,7 @@ app.get("/sms", async (req, res) => { // Main entry point - this is what kicks o
     }
 });
 
-async function executeCommand(command: string) {
+export async function executeCommand(command: string) { // We execute commands here because ai.ts is only responsible for agent logic. Any actual system actions are daemon-level
 
     const destructiveCommands = [
         'rm', 'del', 'delete', 'format', 'fdisk', 'dd', 'shred',
