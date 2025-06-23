@@ -24,10 +24,17 @@ app.get("/sms", async (req, res) => { // Main entry point - this is what kicks o
     }
 });
 
-export async function executeCommand(command: string) { // We execute commands here because ai.ts is only responsible for agent logic. Any actual system actions are daemon-level
-    console.log(`[MOCK] Executing command: ${command}`);
-    return { success: true, message: `Command executed: ${command}` };
-}
+export function executeCommand(cmd: string): Promise<{ success: boolean, stdout: string, stderr: string }> {
+    return new Promise(resolve => {
+      exec(cmd, (err, stdout, stderr) => {
+        resolve({
+          success: !err,
+          stdout: stdout.trim(),
+          stderr: stderr.trim()
+        });
+      });
+    });
+  }
 
 // Mock functions for tool calls
 export async function watchDesktop(path: string) {

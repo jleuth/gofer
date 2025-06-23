@@ -150,7 +150,26 @@ const executorTool = executor.asTool({
     toolDescription: 'Execute shell commands and perform system operations.',
     customOutputExtractor: async (result) => {
         console.log("AGENT: Executor output:", result.output);
-        return result.output.toString();
+        
+        // Extract the actual command output from the result array
+        if (result.output && Array.isArray(result.output) && result.output.length > 0) {
+            const lastOutput = result.output[result.output.length - 1];
+            if (lastOutput && typeof lastOutput === 'object' && 'success' in lastOutput) {
+                const output = lastOutput as any; // Type assertion for the command result
+                if (output.success) {
+                    return `Command: ${output.command}\nOutput: ${output.stdout || ''}\nError: ${output.stderr || ''}`;
+                } else {
+                    return `Command failed: ${output.command}\nError: ${output.stderr || 'Unknown error'}`;
+                }
+            }
+        }
+        
+        // Fallback: try to stringify the entire output
+        try {
+            return JSON.stringify(result.output);
+        } catch {
+            return 'No output';
+        }
     }
 });
 
@@ -182,10 +201,9 @@ export async function runTask(task: Task) {
     try {
         console.log("Running Gofer agent...");
         const result = await runner.run(gofer, inputMessage);
-        const output = result.output.toString();
-        console.log("Gofer agent output:", output);
+        console.log("Gofer agent output:", JSON.stringify(result, null, 2));
         console.log("=== TASK COMPLETE ===");
-        return output;
+        return result;
     } catch (error) {
         console.error("Task failed:", error);
         console.log("=== TASK FAILED ===");
