@@ -3,6 +3,8 @@ import { runTask } from "@/ai";
 import { Task } from "@/types";
 import { exec } from "child_process";
 import { promisify } from "util";
+import pixelmatch from "pixelmatch";
+import { PNG } from "pngjs";
 import dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.local' });
