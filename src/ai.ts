@@ -15,10 +15,7 @@ const __dirname = path.dirname(__filename);
 // Load the system promps from SYSTEM.md
 console.log("Loading system prompts...");
 const systemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/SYSTEM.md"), "utf-8");
-const plannerSystemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/PLANNER.md"), "utf-8");
 const executorSystemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/EXECUTOR.md"), "utf-8");
-const reflectorSystemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/REFLECTOR.md"), "utf-8");
-const watcherSystemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/WATCHER.md"), "utf-8");
 console.log("System prompts loaded");
 
 // Tool definitions
@@ -80,6 +77,7 @@ export const stopWatchTool = tool({
     }
 })
 
+/* idk if i'm gonna need this yet so i just commented it out
 export const analyzeChangesTool = tool({
     name: "analyze_changes",
     description: "Analyze the changes in the desktop by looking at the last two screenshots",
@@ -93,6 +91,7 @@ export const analyzeChangesTool = tool({
         return result;
     }
 })
+*/
 
 export const promptTool = tool({
     name: "prompt_user",
@@ -122,7 +121,7 @@ export const updateTool = tool({
     }
 })
 
-export const doneTool = tool({
+export const doneTool = tool({ // idk if i wanna keep this tool or not
     name: "done_with_task",
     description: "Notify the user that the task is complete",
     parameters: z.object({
@@ -138,13 +137,6 @@ export const doneTool = tool({
 
 
 // Agent definitions
-console.log("Creating agents...");
-const planner = new Agent({
-    name: "Planner",
-    instructions: plannerSystemPrompt,
-    model: "o4-mini",
-});
-
 const executor = new Agent({
     name: "Executor",
     instructions: executorSystemPrompt,
@@ -152,31 +144,6 @@ const executor = new Agent({
     tools: [commandTool, riskyCommandTool]
 });
 
-const watcher = new Agent({
-    name: "Watcher",
-    instructions: watcherSystemPrompt,
-    model: "gpt-4.1-mini",
-    tools: [watchTool, stopWatchTool]
-});
-
-const reflector = new Agent({
-    name: "Reflector",
-    instructions: reflectorSystemPrompt,
-    model: "gpt-4.1-nano", // May switch to mini later
-});
-
-console.log("Agents created");
-
-// Convert agents to tools with unique names
-console.log("Converting agents to tools...");
-const plannerTool = planner.asTool({
-    toolName: 'plan_task',
-    toolDescription: 'Plan and break down a complex task into actionable steps.',
-    customOutputExtractor: async (result) => {
-        console.log("AGENT: Planner output:", result.output);
-        return result.output.toString();
-    }
-});
 
 const executorTool = executor.asTool({
     toolName: 'execute_commands',
@@ -187,31 +154,15 @@ const executorTool = executor.asTool({
     }
 });
 
-const watcherTool = watcher.asTool({
-    toolName: 'manage_desktop_monitoring',
-    toolDescription: 'Monitor desktop changes and watch for specific events.',
-    customOutputExtractor: async (result) => {
-        console.log("AGENT: Watcher output:", result.output);
-        return result.output.toString();
-    }
-});
-
-const reflectorTool = reflector.asTool({
-    toolName: 'reflect_on_progress',
-    toolDescription: 'Analyze task progress and provide insights or recommendations.',
-    customOutputExtractor: async (result) => {
-        console.log("AGENT: Reflector output:", result.output);
-        return result.output.toString();
-    }
-});
 
 // Main agent with all agent tools
 const gofer = new Agent({
     name: "Gofer",
     instructions: systemPrompt,
     model: "o4-mini",
-    tools: [plannerTool, executorTool, watcherTool, reflectorTool, promptTool, updateTool, doneTool]
+    tools: [executorTool, promptTool, updateTool, doneTool, watchTool, stopWatchTool]
 });
+
 
 console.log("Main Gofer agent created with all tools");
 
