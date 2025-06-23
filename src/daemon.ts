@@ -16,7 +16,7 @@ app.get("/sms", async (req, res) => { // Main entry point - this is what kicks o
     };
     
     try {
-        await runTask(task);
+        runTask(task);
         res.json({ success: true, message: "Task completed successfully" });
     } catch (error) {
         console.error("Error running task:", error);
