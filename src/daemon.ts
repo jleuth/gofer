@@ -1,3 +1,6 @@
+// =========================
+// Imports
+// =========================
 import express from "express";
 import { runTask } from "@/ai";
 import { Task } from "@/types";
@@ -11,62 +14,65 @@ import OpenAI from "openai";
 import path from "path";
 import { fileURLToPath } from "url";
 
+// =========================
+// Configuration & Constants
+// =========================
 dotenv.config({ path: '.env.local' });
 const app = express();
 const openai = new OpenAI();
-const __filename = fileURLToPath(import.meta.url);
+
+// Node ESM __dirname shim
+const __filename = fileURLToPath(import.meta.url); // Linter: ensure tsconfig module is set appropriately
 const __dirname = path.dirname(__filename);
 
-const analyzerSystemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/ANALYZER.md"), "utf-8");
+const analyzerSystemPrompt = fs.readFileSync(
+    path.join(__dirname, "./prompts/ANALYZER.md"),
+    "utf-8"
+);
 
-app.get("/sms", async (req, res) => { // Main entry point - this is what kicks on the agent
-    const task: Task = {
-        prompt: req.query.prompt as string || "Hello",
-        from: "sms",
-        previousCommands: []
-    };
-    
-    try {
-        runTask(task);
-        res.json({ success: true, message: "Task completed successfully" });
-    } catch (error) {
-        console.error("Error running task:", error);
-        res.status(500).json({ success: false, error: "Failed to run task" });
-    }
-});
-
+// =========================
+// Utility Functions
+// =========================
+/**
+ * Executes a shell command and returns a promise with the result.
+ */
 export function executeCommand(cmd: string): Promise<{ success: boolean, stdout: string, stderr: string }> {
     return new Promise(resolve => {
-      exec(cmd, (err, stdout, stderr) => {
-        resolve({
-          success: !err,
-          stdout: stdout.trim(),
-          stderr: stderr.trim()
+        exec(cmd, (err, stdout, stderr) => {
+            resolve({
+                success: !err,
+                stdout: stdout.trim(),
+                stderr: stderr.trim()
+            });
         });
-      });
     });
-  }
+}
 
-// Mock functions for tool calls
-export async function watchDesktop(path: string, task: string) {
-    console.log(`[MOCK] Watching desktop at path: ${path}`);
+// =========================
+// Mock Functions for Tool Calls
+// =========================
+/**
+ * Watches the desktop for changes and uses OpenAI to determine if a task is complete.
+ */
+export async function watchDesktop(watchPath: string, task: string) {
+    console.log(`[MOCK] Watching desktop at path: ${watchPath}`);
 
     // Take initial screenshot
-    await executeCommand(`spectacle -m -b -n -o ${path}/startImage.png`);
-    const startImage = PNG.sync.read(fs.readFileSync(`${path}/startImage.png`));
-    const startImageBase64 = fs.readFileSync(`${path}/startImage.png`, 'base64');
+    await executeCommand(`spectacle -m -b -n -o ${watchPath}/startImage.png`);
+    const startImage = PNG.sync.read(fs.readFileSync(`${watchPath}/startImage.png`));
+    const startImageBase64 = fs.readFileSync(`${watchPath}/startImage.png`, 'base64');
     let latestImage: PNG;
     let latestImageBase64: string;
+
     while (true) {
         try {
             // Wait for 60 seconds before checking again
             await new Promise(resolve => setTimeout(resolve, 60000));
 
             // Take new screenshot
-            await executeCommand(`spectacle -m -b -n -o ${path}/latestImage.png`);
-            
-            latestImage = PNG.sync.read(fs.readFileSync(`${path}/latestImage.png`));
-            latestImageBase64 = fs.readFileSync(`${path}/latestImage.png`, 'base64');
+            await executeCommand(`spectacle -m -b -n -o ${watchPath}/latestImage.png`);
+            latestImage = PNG.sync.read(fs.readFileSync(`${watchPath}/latestImage.png`));
+            latestImageBase64 = fs.readFileSync(`${watchPath}/latestImage.png`, 'base64');
             const { width, height } = startImage;
 
             // Ensure dimensions match before comparing
@@ -76,7 +82,14 @@ export async function watchDesktop(path: string, task: string) {
             }
 
             const diff = new PNG({ width, height });
-            const pixelDiff = pixelmatch(startImage.data, latestImage.data, diff.data, width, height, { threshold: 0.1 });
+            const pixelDiff = pixelmatch(
+                startImage.data,
+                latestImage.data,
+                diff.data,
+                width,
+                height,
+                { threshold: 0.1 }
+            );
             const changePercentage = (pixelDiff / (width * height)) * 100;
 
             console.log(`Change percentage: ${changePercentage.toFixed(2)}%`);
@@ -85,7 +98,7 @@ export async function watchDesktop(path: string, task: string) {
                 const result = await openai.responses.create({
                     model: "gpt-4o-mini",
                     input: [
-                        { 
+                        {
                             role: "user",
                             content: [
                                 { type: "input_text", text: `Has the task been completed based on the desktop changes? The task is: ${task}. The start image is first, then the latest image.` },
@@ -95,9 +108,9 @@ export async function watchDesktop(path: string, task: string) {
                         }
                     ]
                 });
-                
+
                 console.log("AI analysis result:", result);
-                
+
                 // Check if the AI indicates the task is complete
                 const finalResult = (result as any)?.final;
                 if (typeof finalResult === 'string' && finalResult.toLowerCase().includes('yes')) {
@@ -112,21 +125,56 @@ export async function watchDesktop(path: string, task: string) {
     }
 }
 
+/**
+ * Mock user prompt function.
+ */
 export async function promptUser(prompt: string) {
     console.log(`[MOCK] User prompt: ${prompt}`);
     return { success: true, response: "User confirmed (mock response)" };
 }
 
+/**
+ * Mock user update function.
+ */
 export async function updateUser(message: string) {
     console.log(`[MOCK] User update: ${message}`);
     return { success: true, message: "Update sent to user" };
 }
 
+/**
+ * Mock done function.
+ */
 export async function done(message: string) {
     console.log(`[MOCK] Task completed: ${message}`);
     return { success: true, message: "Task marked as complete" };
 }
 
+// =========================
+// Express API Endpoints
+// =========================
+
+/**
+ * Main entry point - this is what kicks on the agent
+ */
+app.get("/sms", async (req, res) => {
+    const task: Task = {
+        prompt: (req.query.prompt as string) || "Hello",
+        from: "sms",
+        previousCommands: []
+    };
+
+    try {
+        runTask(task);
+        res.json({ success: true, message: "Task completed successfully" });
+    } catch (error) {
+        console.error("Error running task:", error);
+        res.status(500).json({ success: false, error: "Failed to run task" });
+    }
+});
+
+// =========================
+// Server Start
+// =========================
 app.listen(3000, () => {
     console.log("Server is running on port 3000");
 });
