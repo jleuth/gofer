@@ -1,6 +1,6 @@
 import { Agent, tool, Runner, setDefaultOpenAIKey } from "@openai/agents";
 import { Task } from "@/types";
-import { executeCommand, watchDesktop, stopWatchDesktop, promptUser, updateUser, done } from "@/daemon";
+import { executeCommand, watchDesktop, promptUser, updateUser, done } from "@/daemon";
 import { z } from "zod";
 import * as fs from 'fs';
 import * as path from 'path';
@@ -16,6 +16,7 @@ const __dirname = path.dirname(__filename);
 console.log("Loading system prompts...");
 const systemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/SYSTEM.md"), "utf-8");
 const executorSystemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/EXECUTOR.md"), "utf-8");
+const analyzerSystemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/ANALYZER.md"), "utf-8");
 console.log("System prompts loaded");
 
 // Tool definitions
@@ -51,28 +52,15 @@ export const riskyCommandTool = tool({
 
 export const watchTool = tool({
     name: "watch_desktop",
-    description: "Watch the desktop for changes",
+    description: "Watch the desktop for changes. Provide the path of /tmp and the exact task that was provided to you by the user",
     parameters: z.object({
-        path: z.string() // Path of screenshot to watch
+        path: z.string(), // Path of screenshot to watch
+        task: z.string() // Task to complete
     }),
-    execute: async (input: { path: string }) => {
+    execute: async (input: { path: string, task: string }) => {
         console.log("TOOL: watch_desktop called with:", input);
-        const result = await watchDesktop(input.path);
+        const result = await watchDesktop(input.path, input.task);
         console.log("TOOL: watch_desktop result:", result);
-        return result;
-    }
-})
-
-export const stopWatchTool = tool({
-    name: "stop_watching_desktop",
-    description: "Stop watching the desktop for changes",
-    parameters: z.object({
-        path: z.string() // Path of screenshot to watch
-    }),
-    execute: async (input: { path: string }) => {
-        console.log("TOOL: stop_watching_desktop called with:", input);
-        const result = await stopWatchDesktop(input.path);
-        console.log("TOOL: stop_watching_desktop result:", result);
         return result;
     }
 })
@@ -144,6 +132,12 @@ const executor = new Agent({
     tools: [commandTool, riskyCommandTool]
 });
 
+export const analyzer = new Agent({ // This agent doesn't get called in the agent loop, it's here to be called in the daemon
+    name: "Analyzer",
+    instructions: analyzerSystemPrompt,
+    model: "gpt-4.1-mini",
+})
+
 
 const executorTool = executor.asTool({
     toolName: 'execute_commands',
@@ -179,7 +173,7 @@ const gofer = new Agent({
     name: "Gofer",
     instructions: systemPrompt,
     model: "o4-mini",
-    tools: [executorTool, promptTool, updateTool, doneTool, watchTool, stopWatchTool]
+    tools: [executorTool, promptTool, updateTool, doneTool, watchTool]
 });
 
 
