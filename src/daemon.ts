@@ -1,6 +1,3 @@
-// =========================
-// Imports
-// =========================
 import express from "express";
 import { runTask } from "@/ai";
 import { Task } from "@/types";
@@ -14,15 +11,12 @@ import OpenAI from "openai";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// =========================
-// Configuration & Constants
-// =========================
 dotenv.config({ path: '.env.local' });
 const app = express();
 const openai = new OpenAI();
 
 // Node ESM __dirname shim
-const __filename = fileURLToPath(import.meta.url); // Linter: ensure tsconfig module is set appropriately
+const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const analyzerSystemPrompt = fs.readFileSync(
@@ -30,9 +24,6 @@ const analyzerSystemPrompt = fs.readFileSync(
     "utf-8"
 );
 
-// =========================
-// Utility Functions
-// =========================
 /**
  * Executes a shell command and returns a promise with the result.
  */
@@ -48,9 +39,6 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
     });
 }
 
-// =========================
-// Mock Functions for Tool Calls
-// =========================
 /**
  * Watches the desktop for changes and uses OpenAI to determine if a task is complete.
  */
