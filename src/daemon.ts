@@ -108,7 +108,7 @@ export async function watchDesktop(watchPath: string, task: string) {
 
             console.log(`Change percentage: ${changePercentage.toFixed(2)}%`);
 
-            if (changePercentage > 1) { // A significant change occurred
+            if (changePercentage > .5) { // A significant change occurred
                 const result = await openai.responses.create({
                     model: "gpt-4.1-mini",
                     input: [
