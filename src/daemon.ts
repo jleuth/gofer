@@ -130,7 +130,7 @@ export async function watchDesktop(watchPath: string, task: string) {
                 if (typeof finalResult === 'string' && finalResult.toLowerCase().includes('yes')) {
                     console.log("Task completed! Stopping desktop watch.");
                     inhibitor.kill();
-                    return { success: true, message: "Desktop task completed." };
+                    return { success: true, message: "Desktop task completed. Watcher said: " + finalResult };
                 }
             }
         } catch (error: any) {
@@ -179,44 +179,51 @@ export async function done(message: string) {
 // Telegram bot commands
 // =========================
 
+// Helper function for authorization check
+function isAuthorized(msg: any): boolean {
+    const text = msg.text || "";
+    // Match: /anycommand passcode ...
+    const words = text.trim().split(/\s+/);
+    const secondWord = words[1] || '';
+    console.log(secondWord + "|" + words);
+    return msg.chat.id.toString() === process.env.CHAT_ID && secondWord === process.env.PASSCODE;
+}
+
+function sendToUser(message: string) {
+    bot.sendMessage(process.env.CHAT_ID!, message);
+}
+
 bot.onText(/\/start/, (msg: any) => {
-    if (msg.chat.id.toString() === process.env.CHAT_ID) {
-        bot.sendMessage(process.env.CHAT_ID!, 'Hey! I\'m your Gofer agent. What can I do for you?');
-    } else {
-        console.log("Not authorized");
-    }
+        sendToUser('Hey! I\'m your Gofer agent. What can I do for you?');
 });
 
 bot.onText(/\/help/, (msg: any) => {
-    if (msg.chat.id.toString() === process.env.CHAT_ID) {
-        bot.sendMessage(process.env.CHAT_ID!, 'Here\'s the availiable commands: \n\n' +
+    if (isAuthorized(msg)) {
+        sendToUser(
+            'Here\'s the availiable commands: \n\n' +
             'run - Send Gofer a new task to run \n' +
             'status - Check the status of a task \n' +
             'cancel - Immediately cancel the currently running task \n' +
             'shutdown - Stop the Gofer server on your computer \n' +
-            'help - Show a list of commands \n'
+            'help - Show a list of commands \n' +
+            'To run a command, use /command <passcode> <command> \n'
         );
-    } else {
-        console.log("Not authorized");
     }
 });
 
 // Match "/run <task description>" (optionally handling bot mentions like /run@MyBot)
 bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) => {
-    if (msg.chat.id.toString() !== process.env.CHAT_ID) {
-        console.log("Not authorized");
-        return;
-    }
+    if (!isAuthorized(msg)) return;
 
     const taskPrompt = match && match[1] ? match[1].trim() : '';
 
     if (!taskPrompt) {
-        bot.sendMessage(process.env.CHAT_ID!, 'Please provide a task after /run. Example: /run build the project');
+        sendToUser('Please provide a task after /run. Example: /run build the project');
         return;
     }
 
     runTask(taskPrompt);
-    bot.sendMessage(process.env.CHAT_ID!, 'Now running your task...');
+    sendToUser('Now running your task...');
 });
 
 // =========================
