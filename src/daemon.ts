@@ -115,7 +115,7 @@ export async function watchDesktop(watchPath: string, task: string) {
                         {
                             role: "user",
                             content: [
-                                { type: "input_text", text: `Has the task been completed based on the desktop changes? The task is: ${task}. The start image is first, then the latest image.` },
+                                { type: "input_text", text: `Has the task been completed based on the desktop changes? The task is: ${task}. The start image is first, then the latest image. Reply with ONLY "yes" or "no" without any other text. ` },
                                 { type: "input_image", image_url: `data:image/png;base64,${startImageBase64}`, detail: "high" },
                                 { type: "input_image", image_url: `data:image/png;base64,${latestImageBase64}`, detail: "high" }
                             ]
@@ -127,7 +127,18 @@ export async function watchDesktop(watchPath: string, task: string) {
 
                 // Check if the AI indicates the task is complete
                 const finalResult = (result as any)?.final;
-                if (typeof finalResult === 'string' && finalResult.toLowerCase().includes('yes')) {
+                const completionKeywords = [
+                    "yes",
+                    "true", 
+                    "completed",
+                    "finished",
+                    "done",
+                    "success",
+                    "ok"
+                ];
+                if (typeof finalResult === 'string' && completionKeywords.some(keyword => 
+                    finalResult.toLowerCase().includes(keyword)
+                )) {
                     console.log("Task completed! Stopping desktop watch.");
                     inhibitor.kill();
                     return { success: true, message: "Desktop task completed. Watcher said: " + finalResult };
@@ -218,7 +229,7 @@ bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) =
     const taskPrompt = match && match[1] ? match[1].trim() : '';
 
     if (!taskPrompt) {
-        sendToUser('Please provide a task after /run. Example: /run build the project');
+        sendToUser('Please provide a task after /run. Example: /run <passcode> build the project');
         return;
     }
 
