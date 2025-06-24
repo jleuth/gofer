@@ -242,6 +242,11 @@ bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) =
     bot.sendMessage(process.env.CHAT_ID!, 'Now running your task...');
 });
 
+bot.onText(/\/shutdown/, (msg: any) => {
+    if (!isAuthorized(msg)) return;
+    process.exit(0);
+});
+
 // =========================
 // Server Start
 // =========================
