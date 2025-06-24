@@ -1,4 +1,3 @@
-import express from "express";
 import { runTask } from "@/ai";
 import { Task } from "@/types";
 import { exec } from "child_process";
@@ -12,8 +11,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 dotenv.config({ path: '.env.local' });
-const app = express();
 const openai = new OpenAI();
+const TelegramBot = require('node-telegram-bot-api');
+const token = process.env.TELEGRAM_TOKEN;
+const bot = new TelegramBot(token, { polling: true });
 
 // Node ESM __dirname shim
 const __filename = fileURLToPath(import.meta.url);
@@ -141,31 +142,12 @@ export async function done(message: string) {
 // Express API Endpoints
 // =========================
 
-/**
- * Main entry point - this is what kicks on the agent
- */
-app.get("/sms", async (req, res) => {
-    const task: Task = {
-        prompt: (req.query.prompt as string) || "Hello",
-        from: "sms",
-        previousCommands: []
-    };
 
-    try {
-        runTask(task);
-        res.json({ success: true, message: "Task completed successfully" });
-    } catch (error) {
-        console.error("Error running task:", error);
-        res.status(500).json({ success: false, error: "Failed to run task" });
-    }
-});
 
 // =========================
 // Server Start
 // =========================
-app.listen(3000, () => {
-    console.log("Server is running on port 3000");
-});
+
 
 
 
