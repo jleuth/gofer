@@ -207,17 +207,14 @@ function isAuthorized(msg: any): boolean {
     return msg.chat.id.toString() === process.env.CHAT_ID && secondWord === process.env.PASSCODE;
 }
 
-function sendToUser(message: string) {
-    bot.sendMessage(process.env.CHAT_ID!, message);
-}
 
 bot.onText(/\/start/, (msg: any) => {
-        sendToUser('Hey! I\'m your Gofer agent. What can I do for you?');
+    bot.sendMessage(process.env.CHAT_ID!, 'Hey! I\'m your Gofer agent. What can I do for you?');
 });
 
 bot.onText(/\/help/, (msg: any) => {
     if (isAuthorized(msg)) {
-        sendToUser(
+        bot.sendMessage(process.env.CHAT_ID!,
             'Here\'s the availiable commands: \n\n' +
             'run - Send Gofer a new task to run \n' +
             'status - Check the status of a task \n' + // todo
@@ -237,12 +234,12 @@ bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) =
     const taskPrompt = match && match[1] ? match[1].trim() : '';
 
     if (!taskPrompt) {
-        sendToUser('Please provide a task after /run. Example: /run <passcode> build the project');
+        bot.sendMessage(process.env.CHAT_ID!, 'Please provide a task after /run. Example: /run <passcode> build the project');
         return;
     }
 
     runTask(taskPrompt);
-    sendToUser('Now running your task...');
+    bot.sendMessage(process.env.CHAT_ID!, 'Now running your task...');
 });
 
 // =========================
