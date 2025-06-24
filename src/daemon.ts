@@ -116,8 +116,8 @@ export async function watchDesktop(watchPath: string, task: string) {
                             role: "user",
                             content: [
                                 { type: "input_text", text: `Has the task been completed based on the desktop changes? The task is: ${task}. The start image is first, then the latest image. Reply with ONLY "yes" or "no" without any other text. ` },
-                                { type: "input_image", image_url: `data:image/png;base64,${startImageBase64}`, detail: "high" },
-                                { type: "input_image", image_url: `data:image/png;base64,${latestImageBase64}`, detail: "high" }
+                                { type: "input_image", image_url: `data:image/png;base64,${startImageBase64}`, detail: "auto" },
+                                { type: "input_image", image_url: `data:image/png;base64,${latestImageBase64}`, detail: "auto" }
                             ]
                         }
                     ]
