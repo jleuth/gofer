@@ -40,6 +40,9 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
 
     for (const pattern of forbiddenPatterns) {
         if (pattern.test(cmd)) {
+
+            bot.sendMessage(process.env.CHAT_ID!, `Gofer attempted to run a forbidden command: ${cmd}. Execution was blocked.`);
+
             return Promise.resolve({
                 success: false,
                 stdout: "",
@@ -64,6 +67,7 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
  */
 export async function watchDesktop(watchPath: string, task: string) {
     console.log(`Watching desktop at path: ${watchPath}`);
+    bot.sendMessage(process.env.CHAT_ID!, `Gofer started watching the desktop for changes`);
 
     const inhibitor = spawn('systemd-inhibit', [ // Prevent sleep while watching desktop.
         '--what=idle:sleep:handle-lid-switch',
@@ -141,12 +145,15 @@ export async function watchDesktop(watchPath: string, task: string) {
                 )) {
                     console.log("Task completed! Stopping desktop watch.");
                     inhibitor.kill();
+                    bot.sendMessage(process.env.CHAT_ID!, `Gofer stopped watching the desktop for changes. The final screenshot is attached.`);
+                    bot.sendDocument(process.env.CHAT_ID!, `${watchPath}/latestImage.png`);
                     return { success: true, message: "Desktop task completed. Watcher said: " + finalResult };
                 }
             }
         } catch (error: any) {
             console.error("Error in watch loop:", error);
             inhibitor.kill();
+            bot.sendMessage(process.env.CHAT_ID!, `An error caused Gofer to stop watching the desktop for changes`);
             return { success: false, message: `Error watching desktop: ${error.message}` };
         }
     }
@@ -213,16 +220,17 @@ bot.onText(/\/help/, (msg: any) => {
         sendToUser(
             'Here\'s the availiable commands: \n\n' +
             'run - Send Gofer a new task to run \n' +
-            'status - Check the status of a task \n' +
-            'cancel - Immediately cancel the currently running task \n' +
-            'shutdown - Stop the Gofer server on your computer \n' +
+            'status - Check the status of a task \n' + // todo
+            'grab - Manually grab a screenshot of the desktop \n' +
+            'cancel - Immediately cancel the currently running task \n' + // todo
+            'shutdown - Stop the Gofer server on your computer \n' + // todo
             'help - Show a list of commands \n' +
             'To run a command, use /command <passcode> <command> \n'
         );
     }
 });
 
-// Match "/run <task description>" (optionally handling bot mentions like /run@MyBot)
+// Match "/run <task description>
 bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) => {
     if (!isAuthorized(msg)) return;
 
