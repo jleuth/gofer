@@ -133,7 +133,7 @@ export async function updateUser(message: string) {
  * Mock done function.
  */
 export async function done(message: string) {
-    console.log(`[MOCK] Task completed: ${message}`);
+    bot.sendMessage(process.env.CHAT_ID!, `Task completed: ${message}`);
     return { success: true, message: "Task marked as complete" };
 }
 
@@ -143,7 +143,7 @@ export async function done(message: string) {
 
 bot.onText(/\/start/, (msg: any) => {
     if (msg.chat.id.toString() === process.env.CHAT_ID) {
-        bot.sendMessage(msg.chat.id, 'Hey! I\'m your Gofer agent. What can I do for you?');
+        bot.sendMessage(process.env.CHAT_ID!, 'Hey! I\'m your Gofer agent. What can I do for you?');
     } else {
         console.log("Not authorized");
     }
@@ -151,14 +151,13 @@ bot.onText(/\/start/, (msg: any) => {
 
 bot.onText(/\/help/, (msg: any) => {
     if (msg.chat.id.toString() === process.env.CHAT_ID) {
-        bot.sendMessage(msg.chat.id, 'Here\'s the availiable commands: \n\n' +
+        bot.sendMessage(process.env.CHAT_ID!, 'Here\'s the availiable commands: \n\n' +
             'run - Send Gofer a new task to run \n' +
             'status - Check the status of a task \n' +
             'cancel - Immediately cancel the currently running task \n' +
             'shutdown - Stop the Gofer server on your computer \n' +
             'help - Show a list of commands \n'
         );
-        console.log(msg.chat.id);
     } else {
         console.log("Not authorized");
     }
@@ -166,7 +165,8 @@ bot.onText(/\/help/, (msg: any) => {
 
 bot.onText(/\/run/, (msg: any) => {
     if (msg.chat.id.toString() === process.env.CHAT_ID) {
-        bot.sendMessage(msg.chat.id, 'What task would you like me to run?');
+        runTask(msg.text);
+        bot.sendMessage(process.env.CHAT_ID!, 'Now running your task...');
     } else {
         console.log("Not authorized");
     }
