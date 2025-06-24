@@ -218,9 +218,10 @@ bot.onText(/\/help/, (msg: any) => {
             'Here\'s the availiable commands: \n\n' +
             'run - Send Gofer a new task to run \n' +
             'status - Check the status of a task \n' + // todo
-            'grab - Manually grab a screenshot of the desktop \n' +
+            'screenshot - Manually grab a screenshot of the desktop \n' +
+            'getfile - Have Gofer send you a file from your computer \n' + // todo
             'cancel - Immediately cancel the currently running task \n' + // todo
-            'shutdown - Stop the Gofer server on your computer \n' + // todo
+            'shutdown - Stop the Gofer server on your computer \n' +
             'help - Show a list of commands \n' +
             'To run a command, use /command <passcode> <command> \n'
         );
@@ -245,6 +246,12 @@ bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) =
 bot.onText(/\/shutdown/, (msg: any) => {
     if (!isAuthorized(msg)) return;
     process.exit(0);
+});
+
+bot.onText(/\/screenshot/, (msg: any) => {
+    if (!isAuthorized(msg)) return;
+    executeCommand(`spectacle -m -b -n -o /tmp/latestImage.png`);
+    bot.sendDocument(process.env.CHAT_ID!, '/tmp/latestImage.png');
 });
 
 // =========================
