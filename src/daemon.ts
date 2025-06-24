@@ -1,6 +1,6 @@
 import { runTask } from "@/ai";
 import { Task } from "@/types";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import pixelmatch from "pixelmatch";
 import fs from "fs";
@@ -43,7 +43,13 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
  * Watches the desktop for changes and uses OpenAI to determine if a task is complete.
  */
 export async function watchDesktop(watchPath: string, task: string) {
-    console.log(`[MOCK] Watching desktop at path: ${watchPath}`);
+    console.log(`Watching desktop at path: ${watchPath}`);
+
+    const inhibitor = spawn('systemd-inhibit', [ // Prevent sleep while watching desktop.
+        '--what=idle:sleep:handle-lid-switch',
+        '--why=Gofer desktop watch',
+        'sleep', 'infinity'
+      ], { stdio: 'ignore' });
 
     // Take initial screenshot
     await executeCommand(`spectacle -m -b -n -o ${watchPath}/startImage.png`);
@@ -103,11 +109,13 @@ export async function watchDesktop(watchPath: string, task: string) {
                 const finalResult = (result as any)?.final;
                 if (typeof finalResult === 'string' && finalResult.toLowerCase().includes('yes')) {
                     console.log("Task completed! Stopping desktop watch.");
+                    inhibitor.kill();
                     return { success: true, message: "Desktop task completed." };
                 }
             }
         } catch (error: any) {
             console.error("Error in watch loop:", error);
+            inhibitor.kill();
             return { success: false, message: `Error watching desktop: ${error.message}` };
         }
     }
