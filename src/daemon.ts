@@ -114,23 +114,28 @@ export async function watchDesktop(watchPath: string, task: string) {
 }
 
 /**
- * Mock user prompt function.
+ * user prompt function.
  */
 export async function promptUser(prompt: string) {
-    console.log(`[MOCK] User prompt: ${prompt}`);
-    return { success: true, response: "User confirmed (mock response)" };
+    bot.sendMessage(process.env.CHAT_ID!, `Gofer asked: ${prompt}`);
+    
+    const response = await bot.on('message', (msg: any) => { // Wait for user response
+        return msg.text;
+    });
+
+    return { success: true, response: response };
 }
 
 /**
- * Mock user update function.
+ * user update function.
  */
 export async function updateUser(message: string) {
-    console.log(`[MOCK] User update: ${message}`);
+    bot.sendMessage(process.env.CHAT_ID!, `Gofer sent an update: ${message}`);
     return { success: true, message: "Update sent to user" };
 }
 
 /**
- * Mock done function.
+ * done function.
  */
 export async function done(message: string) {
     bot.sendMessage(process.env.CHAT_ID!, `Task completed: ${message}`);
