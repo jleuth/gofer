@@ -28,6 +28,26 @@ const analyzerSystemPrompt = fs.readFileSync(
  * Executes a shell command and returns a promise with the result.
  */
 export function executeCommand(cmd: string): Promise<{ success: boolean, stdout: string, stderr: string }> {
+
+    // Refuse to run absolutely forbidden commands, regardless of user approval.
+    // These are commands that should never be run autonomously under any circumstances.
+    const forbiddenPatterns = [
+        /\brm\s+-rf?\s+\/\s*--no-preserve-root\b/i, // rm -rf / --no-preserve-root
+        /\bdd\s+if=.*\s+of=\/dev\/(sda|nvme|hda)[0-9]*/i, // dd to disk
+        /\bmkfs(\.\w+)?\s+\/dev\/[a-z0-9]+/i, // mkfs on a device
+        /\bpasswd\b/i, // passwd command
+    ];
+
+    for (const pattern of forbiddenPatterns) {
+        if (pattern.test(cmd)) {
+            return Promise.resolve({
+                success: false,
+                stdout: "",
+                stderr: "Refusing to run absolutely forbidden command: " + cmd
+            });
+        }
+    }
+
     return new Promise(resolve => {
         exec(cmd, (err, stdout, stderr) => {
             resolve({
