@@ -32,22 +32,18 @@ export const commandTool = tool({
         console.log("TOOL: execute_command result:", result);
         return result;
     }
-})
+});
 
 export const riskyCommandTool = tool({
     name: "execute_risky_command",
-    description: "Execute a risky or possibly destructive shell command and return it's stdout/stderr",
-    parameters: z.object({
-        cmd: z.string()
-    }),
-    needsApproval: true,
-    execute: async (input: { cmd: string }) => {
-        console.log("TOOL: execute_risky_command called with:", input);
-        const result = await executeCommand(input.cmd);
-        console.log("TOOL: execute_risky_command result:", result);
-        return result;
+    description: "Execute a risky or possibly destructive shell command",
+    parameters: z.object({ cmd: z.string() }),
+    needsApproval: true, // always interrupt for approval
+    execute: async ({ cmd }) => {
+        console.log("TOOL: execute_risky_command called with:", cmd);
+        return await executeCommand(cmd);
     }
-})
+});
 
 export const watchTool = tool({
     name: "watch_desktop",
@@ -126,32 +122,37 @@ const gofer = new Agent({
 console.log("Main Gofer agent created with all tools");
 
 export async function runTask(taskInput: Task | string) {
-    // Normalize the input so the rest of the function can operate the same way
-    const task: Task = (typeof taskInput === "string")
-        ? { prompt: taskInput, from: "telegram" as const }
+    const task: Task = typeof taskInput === "string"
+        ? { prompt: taskInput, from: "telegram" }
         : taskInput;
 
-    console.log("=== TASK START ===");
-    console.log("Task:", task.prompt);
-    console.log("From:", task.from);
-    if (task.previousCommands) {
-        console.log("Previous commands:", task.previousCommands);
-    }
-    
+    console.log("=== TASK START ===", task.prompt);
+
     const runner = new Runner();
-    const inputMessage = `Task: ${task.prompt}\nFrom: ${task.from}${task.previousCommands ? `\nPrevious Commands: ${task.previousCommands.join(', ')}` : ''}`;
-    
-    console.log("Input message to Gofer:", inputMessage);
-    
-    try {
-        console.log("Running Gofer agent...");
-        const result = await runner.run(gofer, inputMessage);
-        console.log("Gofer agent output:", JSON.stringify(result, null, 2));
-        console.log("=== TASK COMPLETE ===");
-        return result;
-    } catch (error) {
-        console.error("Task failed:", error);
-        console.log("=== TASK FAILED ===");
-        throw error;
+    // initial call
+    let result = await runner.run(gofer, `Task: ${task.prompt}`, { maxTurns: 30 });
+
+    // single-interruption approval hack
+    if (result.interruptions?.length) {
+        const intr = result.interruptions[0];
+        const args = intr.rawItem.arguments;  // e.g. '{"cmd":"rm -rf ~/foo"}'
+        const answer = await promptUser(`Approve this command? ${args}`) as { response: string };
+
+        if (answer.response.trim().toLowerCase().startsWith("y")) {
+            result.state.approve(intr);
+        } else {
+            result.state.reject(intr);
+        }
+
+        // resume exactly where we left off
+        result = await runner.run(gofer, result.state, { maxTurns: 30 });
     }
+
+    // auto-loop until done
+    while (!result.finalOutput) {
+        result = await runner.run(gofer, result.state, { maxTurns: 30 });
+    }
+
+    console.log("=== TASK COMPLETE ===", result.finalOutput);
+    return result;
 }
