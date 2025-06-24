@@ -119,11 +119,16 @@ export async function watchDesktop(watchPath: string, task: string) {
 export async function promptUser(prompt: string) {
     bot.sendMessage(process.env.CHAT_ID!, `Gofer asked: ${prompt}`);
     
-    const response = await bot.on('message', (msg: any) => { // Wait for user response
-        return msg.text;
-    });
+    return new Promise((resolve) => {
+        const messageHandler = (msg: any) => {
+            if (msg.chat.id.toString() === process.env.CHAT_ID) {
+                bot.removeListener('message', messageHandler);
+                resolve({ success: true, response: msg.text });
+            }
+        };
 
-    return { success: true, response: response };
+        bot.on('message', messageHandler);
+    });
 }
 
 /**
@@ -168,13 +173,22 @@ bot.onText(/\/help/, (msg: any) => {
     }
 });
 
-bot.onText(/\/run/, (msg: any) => {
-    if (msg.chat.id.toString() === process.env.CHAT_ID) {
-        runTask(msg.text);
-        bot.sendMessage(process.env.CHAT_ID!, 'Now running your task...');
-    } else {
+// Match "/run <task description>" (optionally handling bot mentions like /run@MyBot)
+bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) => {
+    if (msg.chat.id.toString() !== process.env.CHAT_ID) {
         console.log("Not authorized");
+        return;
     }
+
+    const taskPrompt = match && match[1] ? match[1].trim() : '';
+
+    if (!taskPrompt) {
+        bot.sendMessage(process.env.CHAT_ID!, 'Please provide a task after /run. Example: /run build the project');
+        return;
+    }
+
+    runTask(taskPrompt);
+    bot.sendMessage(process.env.CHAT_ID!, 'Now running your task...');
 });
 
 // =========================

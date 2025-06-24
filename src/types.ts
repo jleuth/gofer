@@ -1,6 +1,5 @@
-
 export interface Task {
     prompt: string;
-    from: 'sms' | 'repl';
+    from: 'sms' | 'repl' | 'telegram';
     previousCommands?: string[];
 }
