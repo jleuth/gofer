@@ -10,15 +10,14 @@ import OpenAI from "openai";
 import path from "path";
 import { fileURLToPath } from "url";
 
-dotenv.config({ path: '.env.local' });
-const openai = new OpenAI();
-const TelegramBot = require('node-telegram-bot-api');
-const token = process.env.TELEGRAM_TOKEN;
-const bot = new TelegramBot(token, { polling: true });
-
-// Node ESM __dirname shim
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const TelegramBot = (await import('node-telegram-bot-api')).default;
+dotenv.config({ path: path.join(__dirname, '../.env.local') });
+const openai = new OpenAI();
+
+const token = process.env.TELEGRAM_TOKEN!;
+const bot = new TelegramBot(token, { polling: true });
 
 const analyzerSystemPrompt = fs.readFileSync(
     path.join(__dirname, "./prompts/ANALYZER.md"),
@@ -139,14 +138,56 @@ export async function done(message: string) {
 }
 
 // =========================
-// Express API Endpoints
+// Telegram bot commands
 // =========================
 
+bot.onText(/\/start/, (msg: any) => {
+    if (msg.chat.id.toString() === process.env.CHAT_ID) {
+        bot.sendMessage(msg.chat.id, 'Hey! I\'m your Gofer agent. What can I do for you?');
+    } else {
+        console.log("Not authorized");
+    }
+});
 
+bot.onText(/\/help/, (msg: any) => {
+    if (msg.chat.id.toString() === process.env.CHAT_ID) {
+        bot.sendMessage(msg.chat.id, 'Here\'s the availiable commands: \n\n' +
+            'run - Send Gofer a new task to run \n' +
+            'status - Check the status of a task \n' +
+            'cancel - Immediately cancel the currently running task \n' +
+            'shutdown - Stop the Gofer server on your computer \n' +
+            'help - Show a list of commands \n'
+        );
+        console.log(msg.chat.id);
+    } else {
+        console.log("Not authorized");
+    }
+});
+
+bot.onText(/\/run/, (msg: any) => {
+    if (msg.chat.id.toString() === process.env.CHAT_ID) {
+        bot.sendMessage(msg.chat.id, 'What task would you like me to run?');
+    } else {
+        console.log("Not authorized");
+    }
+});
 
 // =========================
 // Server Start
 // =========================
+console.log('Starting Gofer daemon...');
+console.log('Gofer is listening for commands...');
+
+// Keep the process alive
+process.on('SIGINT', () => {
+    console.log('Shutting down Gofer daemon...');
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('Shutting down Gofer daemon...');
+    process.exit(0);
+});
 
 
 
