@@ -15,7 +15,6 @@ setDefaultOpenAIKey(process.env.OPENAI_API_KEY!);
 // Load the system prompts from SYSTEM.md
 console.log("Loading system prompts...");
 const systemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/SYSTEM.md"), "utf-8");
-const executorSystemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/EXECUTOR.md"), "utf-8");
 const analyzerSystemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/ANALYZER.md"), "utf-8");
 console.log("System prompts loaded");
 
@@ -65,22 +64,6 @@ export const watchTool = tool({
     }
 })
 
-/* idk if i'm gonna need this yet so i just commented it out
-export const analyzeChangesTool = tool({
-    name: "analyze_changes",
-    description: "Analyze the changes in the desktop by looking at the last two screenshots",
-    parameters: z.object({
-        path: z.string() // Path of screenshot to analyze
-    }),
-    execute: async (input: { path: string }) => {
-        console.log("TOOL: analyze_changes called with:", input);
-        const result = await analyzeChanges(input.path);
-        console.log("TOOL: analyze_changes result:", result);
-        return result;
-    }
-})
-*/
-
 export const promptTool = tool({
     name: "prompt_user",
     description: "Prompt the user for input, use this to ask the user for confirmation or to get more information",
@@ -124,14 +107,6 @@ export const doneTool = tool({ // idk if i wanna keep this tool or not
 })
 
 
-// Agent definitions
-const executor = new Agent({
-    name: "Executor",
-    instructions: executorSystemPrompt,
-    model: "gpt-4.1-mini",
-    tools: [commandTool, riskyCommandTool]
-});
-
 export const analyzer = new Agent({ // This agent doesn't get called in the agent loop, it's here to be called in the daemon
     name: "Analyzer",
     instructions: analyzerSystemPrompt,
@@ -139,47 +114,23 @@ export const analyzer = new Agent({ // This agent doesn't get called in the agen
 })
 
 
-const executorTool = executor.asTool({
-    toolName: 'execute_commands',
-    toolDescription: 'Execute shell commands and perform system operations.',
-    customOutputExtractor: async (result) => {
-        console.log("AGENT: Executor output:", result.output);
-        
-        // Extract the actual command output from the result array
-        if (result.output && Array.isArray(result.output) && result.output.length > 0) {
-            const lastOutput = result.output[result.output.length - 1];
-            if (lastOutput && typeof lastOutput === 'object' && 'success' in lastOutput) {
-                const output = lastOutput as any; // Type assertion for the command result
-                if (output.success) {
-                    return `Command: ${output.command}\nOutput: ${output.stdout || ''}\nError: ${output.stderr || ''}`;
-                } else {
-                    return `Command failed: ${output.command}\nError: ${output.stderr || 'Unknown error'}`;
-                }
-            }
-        }
-        
-        // Fallback: try to stringify the entire output
-        try {
-            return JSON.stringify(result.output);
-        } catch {
-            return 'No output';
-        }
-    }
-});
-
-
-// Main agent with all agent tools
+// Main agent with direct command execution tools
 const gofer = new Agent({
     name: "Gofer",
     instructions: systemPrompt,
-    model: "o4-mini",
-    tools: [executorTool, promptTool, updateTool, doneTool, watchTool]
+    model: "gpt-4.1-mini",
+    tools: [commandTool, riskyCommandTool, promptTool, updateTool, doneTool, watchTool]
 });
 
 
 console.log("Main Gofer agent created with all tools");
 
-export async function runTask(task: Task) {
+export async function runTask(taskInput: Task | string) {
+    // Normalize the input so the rest of the function can operate the same way
+    const task: Task = (typeof taskInput === "string")
+        ? { prompt: taskInput, from: "telegram" as const }
+        : taskInput;
+
     console.log("=== TASK START ===");
     console.log("Task:", task.prompt);
     console.log("From:", task.from);
