@@ -250,11 +250,11 @@ bot.onText(/\/shutdown/, (msg: any) => {
 
 bot.onText(/\/screenshot/, async (msg: any) => {
     if (!isAuthorized(msg)) return;
-    await executeCommand(`spectacle -m -b -n -o /tmp/latestImage.png`);
+    await executeCommand(`spectacle -b -n -o /tmp/latestImage.png`);
     process.env.NTBA_FIX_350 = 'true'; // This is a workaround for a bug in the Telegram bot API (i think?)
 
     bot.sendMessage(process.env.CHAT_ID!, 'Here is the screenshot:');
-    bot.sendPhoto(process.env.CHAT_ID!, '/tmp/latestImage.png');
+    bot.sendDocument(process.env.CHAT_ID!, '/tmp/latestImage.png');
 });
 
 // =========================
