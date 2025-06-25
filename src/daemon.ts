@@ -260,13 +260,21 @@ bot.onText(/\/screenshot/, async (msg: any) => {
 bot.onText(/\/getfile/, async (msg: any) => {
     if (!isAuthorized(msg)) return;
 
-    // Have the model find the path if it wasn't provided
-    const result = await openai.responses.create({
-        model: "gpt-4.1-mini",
-        input: [{ role: "user", content: `Find the path to the file ${msg.text.split(' ')[1]}. Use your ` }]
-    });
+    const prompt = msg.text.split(' ').slice(1).join(' ');
 
-    bot.sendMessage(process.env.CHAT_ID!, 'Please provide a file path after /getfile. Example: /getfile /path/to/file.txt');
+    // Check if the user provided a valid file path
+    try {
+        const checkPath = fs.statSync(prompt);
+        bot.sendMessage(process.env.CHAT_ID!, 'Here is the file:');
+        bot.sendDocument(process.env.CHAT_ID!, prompt);
+    } catch (error) {
+        console.log('There is no file at that path. Gofer will try to find it.');
+
+        const result = await runTask(`The user is looking for the file "${prompt}". Use your command line tools to find the path. When calling to done_with_task, reply ONLY with the path, or else we won't be able to send the file. If you can't find the file, reply with "not found". Start by looking in common directories, like ~/Downloads, ~/Documents, ~/Desktop, etc.`);
+        bot.sendDocument(process.env.CHAT_ID!, result.finalOutput as string);
+
+        console.log(result);
+    }
 });
 
 // =========================
