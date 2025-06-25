@@ -244,7 +244,6 @@ bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) =
 });
 
 bot.onText(/\/shutdown/, (msg: any) => {
-    if (!isAuthorized(msg)) return;
     process.exit(0);
 });
 
