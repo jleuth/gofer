@@ -148,7 +148,7 @@ out/
 *.backup 
 
 # Command log
-commandlog.json
+src/log.json
 
 # .claude
 .claude/
