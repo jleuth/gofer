@@ -146,3 +146,9 @@ out/
 # Backup files
 *.bak
 *.backup 
+
+# Command log
+commandlog.json
+
+# .claude
+.claude/
