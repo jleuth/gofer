@@ -257,6 +257,18 @@ bot.onText(/\/screenshot/, async (msg: any) => {
     bot.sendDocument(process.env.CHAT_ID!, '/tmp/latestImage.png');
 });
 
+bot.onText(/\/getfile/, async (msg: any) => {
+    if (!isAuthorized(msg)) return;
+
+    // Have the model find the path if it wasn't provided
+    const result = await openai.responses.create({
+        model: "gpt-4.1-mini",
+        input: [{ role: "user", content: `Find the path to the file ${msg.text.split(' ')[1]}. Use your ` }]
+    });
+
+    bot.sendMessage(process.env.CHAT_ID!, 'Please provide a file path after /getfile. Example: /getfile /path/to/file.txt');
+});
+
 // =========================
 // Server Start
 // =========================

@@ -103,13 +103,6 @@ export const doneTool = tool({ // idk if i wanna keep this tool or not
 })
 
 
-export const analyzer = new Agent({ // This agent doesn't get called in the agent loop, it's here to be called in the daemon
-    name: "Analyzer",
-    instructions: analyzerSystemPrompt,
-    model: "gpt-4.1-mini",
-})
-
-
 // Main agent with direct command execution tools
 const gofer = new Agent({
     name: "Gofer",
