@@ -13,34 +13,22 @@ const __dirname = path.dirname(__filename);
 const TelegramBot = (await import('node-telegram-bot-api')).default;
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
 const openai = new OpenAI();
-
-const token = process.env.TELEGRAM_TOKEN!;
-const bot = new TelegramBot(token, { polling: true });
-
-const analyzerSystemPrompt = fs.readFileSync(
-    path.join(__dirname, "./prompts/ANALYZER.md"),
-    "utf-8"
-);
+const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: true });
 
 /**
  * Executes a shell command and returns a promise with the result.
  */
 export function executeCommand(cmd: string): Promise<{ success: boolean, stdout: string, stderr: string }> {
-
-    // Refuse to run absolutely forbidden commands, regardless of user approval.
-    // These are commands that should never be run autonomously under any circumstances.
     const forbiddenPatterns = [
-        /\brm\s+-rf?\s+\/\s*--no-preserve-root\b/i, // rm -rf / --no-preserve-root
-        /\bdd\s+if=.*\s+of=\/dev\/(sda|nvme|hda)[0-9]*/i, // dd to disk
-        /\bmkfs(\.\w+)?\s+\/dev\/[a-z0-9]+/i, // mkfs on a device
-        /\bpasswd\b/i, // passwd command
+        /\brm\s+-rf?\s+\/\s*--no-preserve-root\b/i,
+        /\bdd\s+if=.*\s+of=\/dev\/(sda|nvme|hda)[0-9]*/i,
+        /\bmkfs(\.\w+)?\s+\/dev\/[a-z0-9]+/i,
+        /\bpasswd\b/i,
     ];
 
     for (const pattern of forbiddenPatterns) {
         if (pattern.test(cmd)) {
-
             bot.sendMessage(process.env.CHAT_ID!, `Gofer attempted to run a forbidden command: ${cmd}. Execution was blocked.`);
-
             return Promise.resolve({
                 success: false,
                 stdout: "",
@@ -67,31 +55,25 @@ export async function watchDesktop(watchPath: string, task: string) {
     console.log(`Watching desktop at path: ${watchPath}`);
     bot.sendMessage(process.env.CHAT_ID!, `Gofer started watching the desktop for changes`);
 
-    const inhibitor = spawn('systemd-inhibit', [ // Prevent sleep while watching desktop.
+    const inhibitor = spawn('systemd-inhibit', [
         '--what=idle:sleep:handle-lid-switch',
         '--why=Gofer desktop watch',
         'sleep', 'infinity'
-      ], { stdio: 'ignore' });
+    ], { stdio: 'ignore' });
 
-    // Take initial screenshot
     await executeCommand(`spectacle -m -b -n -o ${watchPath}/startImage.png`);
     const startImage = PNG.sync.read(fs.readFileSync(`${watchPath}/startImage.png`));
     const startImageBase64 = fs.readFileSync(`${watchPath}/startImage.png`, 'base64');
-    let latestImage: PNG;
-    let latestImageBase64: string;
 
     while (true) {
         try {
-            // Wait for 60 seconds before checking again
             await new Promise(resolve => setTimeout(resolve, 60000));
 
-            // Take new screenshot
             await executeCommand(`spectacle -m -b -n -o ${watchPath}/latestImage.png`);
-            latestImage = PNG.sync.read(fs.readFileSync(`${watchPath}/latestImage.png`));
-            latestImageBase64 = fs.readFileSync(`${watchPath}/latestImage.png`, 'base64');
+            let latestImage = PNG.sync.read(fs.readFileSync(`${watchPath}/latestImage.png`));
+            let latestImageBase64 = fs.readFileSync(`${watchPath}/latestImage.png`, 'base64');
             const { width, height } = startImage;
 
-            // Ensure dimensions match before comparing
             if (latestImage.width !== width || latestImage.height !== height) {
                 console.error("Screenshot dimensions mismatch. Skipping analysis for this frame.");
                 continue;
@@ -110,7 +92,7 @@ export async function watchDesktop(watchPath: string, task: string) {
 
             console.log(`Change percentage: ${changePercentage.toFixed(2)}%`);
 
-            if (changePercentage > .5) { // A significant change occurred
+            if (changePercentage > .5) {
                 const result = await openai.responses.create({
                     model: "gpt-4.1-mini",
                     input: [
@@ -127,17 +109,9 @@ export async function watchDesktop(watchPath: string, task: string) {
 
                 console.log("AI analysis result:", result);
 
-                // Check if the AI indicates the task is complete
                 const finalResult = (result as any)?.final;
-                const completionKeywords = [
-                    "yes",
-                    "true", 
-                    "completed",
-                    "finished",
-                    "done",
-                    "success",
-                    "ok"
-                ];
+                const completionKeywords = ["yes", "true", "completed", "finished", "done", "success", "ok"];
+                
                 if (typeof finalResult === 'string' && completionKeywords.some(keyword => 
                     finalResult.toLowerCase().includes(keyword)
                 )) {
@@ -204,20 +178,15 @@ export async function getLog() {
  */
 export async function writeToLog(type: string, data: any, success: boolean) {
     const logPath = path.join(__dirname, "log.json");
-    console.log(logPath);
     
     try {
         let logData = [];
         
-        // Read existing log if it exists
         if (fs.existsSync(logPath)) {
             const existingLog = fs.readFileSync(logPath, "utf-8");
             logData = JSON.parse(existingLog);
-        } else { // If the file doesn't exist, create an empty array in log.json
-            logData = [];
         }
         
-        // Add new log entry
         const logEntry = {
             timestamp: new Date().toISOString(),
             type: type,
@@ -227,12 +196,10 @@ export async function writeToLog(type: string, data: any, success: boolean) {
         
         logData.push(logEntry);
         
-        // Keep only the last 100 entries to prevent file from growing too large
         if (logData.length > 100) {
             logData = logData.slice(-100);
         }
         
-        // Write back to file
         fs.writeFileSync(logPath, JSON.stringify(logData, null, 2));
         
         return { success: true, message: "Entry logged successfully" };
@@ -242,21 +209,16 @@ export async function writeToLog(type: string, data: any, success: boolean) {
     }
 }
 
-
 // =========================
 // Telegram bot commands
 // =========================
 
-// Helper function for authorization check
 function isAuthorized(msg: any): boolean {
     const text = msg.text || "";
-    // Match: /anycommand passcode ...
     const words = text.trim().split(/\s+/);
     const secondWord = words[1] || '';
-    console.log(secondWord + "|" + words);
     return msg.chat.id.toString() === process.env.CHAT_ID && secondWord === process.env.PASSCODE;
 }
-
 
 bot.onText(/\/start/, (msg: any) => {
     bot.sendMessage(process.env.CHAT_ID!, 'Hey! I\'m your Gofer agent. What can I do for you?');
@@ -267,10 +229,10 @@ bot.onText(/\/help/, (msg: any) => {
         bot.sendMessage(process.env.CHAT_ID!,
             'Here\'s the availiable commands: \n\n' +
             'run - Send Gofer a new task to run \n' +
-            'status - Check the status of a task \n' + // todo
+            'status - Check the status of a task \n' +
             'screenshot - Manually grab a screenshot of the desktop \n' +
             'getfile - Have Gofer send you a file from your computer \n' +
-            'cancel - Immediately cancel the currently running task \n' + // todo
+            'cancel - Immediately cancel the currently running task \n' +
             'shutdown - Stop the Gofer server on your computer \n' +
             'help - Show a list of commands \n' +
             'To run a command, use /command <passcode> <command> \n'
@@ -278,7 +240,6 @@ bot.onText(/\/help/, (msg: any) => {
     }
 });
 
-// Match "/run <task description>
 bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) => {
     if (!isAuthorized(msg)) return;
 
@@ -300,7 +261,7 @@ bot.onText(/\/shutdown/, (msg: any) => {
 bot.onText(/\/screenshot/, async (msg: any) => {
     if (!isAuthorized(msg)) return;
     await executeCommand(`spectacle -b -n -o /tmp/latestImage.png`);
-    process.env.NTBA_FIX_350 = 'true'; // This is a workaround for a bug in the Telegram bot API (i think?)
+    process.env.NTBA_FIX_350 = 'true';
 
     bot.sendMessage(process.env.CHAT_ID!, 'Here is the screenshot:');
     bot.sendDocument(process.env.CHAT_ID!, '/tmp/latestImage.png');
@@ -311,9 +272,8 @@ bot.onText(/\/getfile/, async (msg: any) => {
 
     const prompt = msg.text.split(' ').slice(1).join(' ');
 
-    // Check if the user provided a valid file path
     try {
-        const checkPath = fs.statSync(prompt);
+        fs.statSync(prompt);
         bot.sendMessage(process.env.CHAT_ID!, 'Here is the file:');
         bot.sendDocument(process.env.CHAT_ID!, prompt);
     } catch (error) {
@@ -350,7 +310,6 @@ bot.onText(/\/status/, (msg: any) => {
 console.log('Starting Gofer daemon...');
 console.log('Gofer is listening for commands...');
 
-// Keep the process alive
 process.on('SIGINT', () => {
     console.log('Shutting down Gofer daemon...');
     process.exit(0);
