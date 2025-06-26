@@ -239,6 +239,7 @@ bot.onText(/\/help/, (msg: any) => {
         bot.sendMessage(process.env.CHAT_ID!,
             'Here\'s the availiable commands: \n\n' +
             'run - Send Gofer a new task to run \n' +
+            'followup - Continue with context from previous commands \n' +
             'status - Check the status of a task \n' +
             'screenshot - Manually grab a screenshot of the desktop \n' +
             'getfile - Have Gofer send you a file from your computer \n' +
@@ -268,6 +269,48 @@ bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) =
 
     runTask(taskPrompt);
     bot.sendMessage(process.env.CHAT_ID!, 'Now running your task...');
+});
+
+bot.onText(/\/followup(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) => {
+    const auth = isAuthorized(msg);
+    if (!auth.authorized) {
+        bot.sendMessage(process.env.CHAT_ID!, auth.message!);
+        return;
+    }
+
+    const followupPrompt = match && match[1] ? match[1].trim() : '';
+
+    if (!followupPrompt) {
+        bot.sendMessage(process.env.CHAT_ID!, 'Please provide a followup task. Example: /followup <passcode> continue the previous task');
+        return;
+    }
+
+    getLog().then((log: string) => {
+        try {
+            const logData = JSON.parse(log);
+            const recentCommands = logData
+                .filter((item: any) => item.type === 'command')
+                .slice(-10)
+                .map((item: any) => `${item.data.command} -> ${item.data.output || '(no output)'}`);
+            
+            const task = {
+                prompt: `Previous context from recent commands:\n${recentCommands.join('\n')}\n\nNew task: ${followupPrompt}`,
+                from: 'telegram' as const,
+                previousCommands: recentCommands
+            };
+            
+            runTask(task);
+            bot.sendMessage(process.env.CHAT_ID!, 'Now running your followup task with context from previous commands...');
+        } catch (error) {
+            console.error('Error getting log for followup:', error);
+            runTask(followupPrompt);
+            bot.sendMessage(process.env.CHAT_ID!, 'Now running your followup task (no previous context available)...');
+        }
+    }).catch((error) => {
+        console.error('Error reading log for followup:', error);
+        runTask(followupPrompt);
+        bot.sendMessage(process.env.CHAT_ID!, 'Now running your followup task (no previous context available)...');
+    });
 });
 
 bot.onText(/\/shutdown/, (msg: any) => {
