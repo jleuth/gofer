@@ -271,11 +271,7 @@ bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) =
 });
 
 bot.onText(/\/shutdown/, (msg: any) => {
-    const auth = isAuthorized(msg);
-    if (!auth.authorized) {
-        bot.sendMessage(process.env.CHAT_ID!, auth.message!);
-        return;
-    }
+    bot.sendMessage(process.env.CHAT_ID!, 'Shutting down...');
     process.exit(0);
 });
 
