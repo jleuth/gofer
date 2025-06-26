@@ -122,17 +122,17 @@ export async function runTask(taskInput: Task | string) {
     console.log("=== TASK START ===", task.prompt);
 
     const runner = new Runner();
-    let result = await runner.run(gofer, `Task: ${task.prompt}`, { maxTurns: 30 });
+
+    let result = await runner.run(gofer, task.prompt, { maxTurns: 30 });
 
     if (result.interruptions?.length) {
-        const intr = result.interruptions[0];
-        const args = intr.rawItem.arguments;
-        const answer = await promptUser(`Approve this command? ${args}`) as { response: string };
-
-        if (answer.response.trim().toLowerCase().startsWith("y")) {
-            result.state.approve(intr);
-        } else {
-            result.state.reject(intr);
+        for (const intr of result.interruptions) {
+            const answer = await promptUser(`Approve this command? ${intr.rawItem.arguments}`) as { response: string }
+            if (answer.response.trim().toLowerCase().startsWith("y")) {
+                result.state.approve(intr);
+            } else {
+                result.state.reject(intr);
+            }
         }
 
         result = await runner.run(gofer, result.state, { maxTurns: 30 });
