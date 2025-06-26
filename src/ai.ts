@@ -6,19 +6,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
-// Get __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 setDefaultOpenAIKey(process.env.OPENAI_API_KEY!);
 
-// Load the system prompts from SYSTEM.md
 console.log("Loading system prompts...");
 const systemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/SYSTEM.md"), "utf-8");
-const analyzerSystemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/ANALYZER.md"), "utf-8");
 console.log("System prompts loaded");
-
-// Tool definitions
 
 export const commandTool = tool({
     name: "execute_command",
@@ -39,7 +34,7 @@ export const riskyCommandTool = tool({
     name: "execute_risky_command",
     description: "Execute a risky or possibly destructive shell command",
     parameters: z.object({ cmd: z.string() }),
-    needsApproval: true, // always interrupt for approval
+    needsApproval: true,
     execute: async ({ cmd }) => {
         console.log("TOOL: execute_risky_command called with:", cmd);
         const result = await executeCommand(cmd);
@@ -53,8 +48,8 @@ export const watchTool = tool({
     name: "watch_desktop",
     description: "Watch the desktop for changes. Provide the path of /tmp and the exact task that was provided to you by the user",
     parameters: z.object({
-        path: z.string(), // Path of screenshot to watch
-        task: z.string() // Task to complete
+        path: z.string(),
+        task: z.string()
     }),
     execute: async (input: { path: string, task: string }) => {
         console.log("TOOL: watch_desktop called with:", input);
@@ -95,7 +90,7 @@ export const updateTool = tool({
     }
 })
 
-export const doneTool = tool({ // idk if i wanna keep this tool or not
+export const doneTool = tool({
     name: "done_with_task",
     description: "Notify the user that the task is complete",
     parameters: z.object({
@@ -110,15 +105,12 @@ export const doneTool = tool({ // idk if i wanna keep this tool or not
     }
 })
 
-
-// Main agent with direct command execution tools
 const gofer = new Agent({
     name: "Gofer",
     instructions: systemPrompt,
     model: "gpt-4.1-mini",
     tools: [commandTool, riskyCommandTool, promptTool, updateTool, doneTool, watchTool]
 });
-
 
 console.log("Main Gofer agent created with all tools");
 
@@ -130,13 +122,11 @@ export async function runTask(taskInput: Task | string) {
     console.log("=== TASK START ===", task.prompt);
 
     const runner = new Runner();
-    // initial call
     let result = await runner.run(gofer, `Task: ${task.prompt}`, { maxTurns: 30 });
 
-    // single-interruption approval hack
     if (result.interruptions?.length) {
         const intr = result.interruptions[0];
-        const args = intr.rawItem.arguments;  // e.g. '{"cmd":"rm -rf ~/foo"}'
+        const args = intr.rawItem.arguments;
         const answer = await promptUser(`Approve this command? ${args}`) as { response: string };
 
         if (answer.response.trim().toLowerCase().startsWith("y")) {
@@ -145,11 +135,9 @@ export async function runTask(taskInput: Task | string) {
             result.state.reject(intr);
         }
 
-        // resume exactly where we left off
         result = await runner.run(gofer, result.state, { maxTurns: 30 });
     }
 
-    // auto-loop until done
     while (!result.finalOutput) {
         result = await runner.run(gofer, result.state, { maxTurns: 30 });
     }
