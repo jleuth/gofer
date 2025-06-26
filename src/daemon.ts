@@ -213,11 +213,20 @@ export async function writeToLog(type: string, data: any, success: boolean) {
 // Telegram bot commands
 // =========================
 
-function isAuthorized(msg: any): boolean {
+function isAuthorized(msg: any): { authorized: boolean; message?: string } {
     const text = msg.text || "";
     const words = text.trim().split(/\s+/);
     const secondWord = words[1] || '';
-    return msg.chat.id.toString() === process.env.CHAT_ID && secondWord === process.env.PASSCODE;
+    const isAuth = msg.chat.id.toString() === process.env.CHAT_ID && secondWord === process.env.PASSCODE;
+    
+    if (!isAuth) {
+        return {
+            authorized: false,
+            message: "Please send your password. The format is /command <password> <prompt/other options>"
+        };
+    }
+    
+    return { authorized: true };
 }
 
 bot.onText(/\/start/, (msg: any) => {
@@ -225,7 +234,8 @@ bot.onText(/\/start/, (msg: any) => {
 });
 
 bot.onText(/\/help/, (msg: any) => {
-    if (isAuthorized(msg)) {
+    const auth = isAuthorized(msg);
+    if (auth.authorized) {
         bot.sendMessage(process.env.CHAT_ID!,
             'Here\'s the availiable commands: \n\n' +
             'run - Send Gofer a new task to run \n' +
@@ -237,11 +247,17 @@ bot.onText(/\/help/, (msg: any) => {
             'help - Show a list of commands \n' +
             'To run a command, use /command <passcode> <command> \n'
         );
+    } else {
+        bot.sendMessage(process.env.CHAT_ID!, auth.message!);
     }
 });
 
 bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) => {
-    if (!isAuthorized(msg)) return;
+    const auth = isAuthorized(msg);
+    if (!auth.authorized) {
+        bot.sendMessage(process.env.CHAT_ID!, auth.message!);
+        return;
+    }
 
     const taskPrompt = match && match[1] ? match[1].trim() : '';
 
@@ -255,11 +271,20 @@ bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) =
 });
 
 bot.onText(/\/shutdown/, (msg: any) => {
+    const auth = isAuthorized(msg);
+    if (!auth.authorized) {
+        bot.sendMessage(process.env.CHAT_ID!, auth.message!);
+        return;
+    }
     process.exit(0);
 });
 
 bot.onText(/\/screenshot/, async (msg: any) => {
-    if (!isAuthorized(msg)) return;
+    const auth = isAuthorized(msg);
+    if (!auth.authorized) {
+        bot.sendMessage(process.env.CHAT_ID!, auth.message!);
+        return;
+    }
     await executeCommand(`spectacle -b -n -o /tmp/latestImage.png`);
     process.env.NTBA_FIX_350 = 'true';
 
@@ -268,7 +293,11 @@ bot.onText(/\/screenshot/, async (msg: any) => {
 });
 
 bot.onText(/\/getfile/, async (msg: any) => {
-    if (!isAuthorized(msg)) return;
+    const auth = isAuthorized(msg);
+    if (!auth.authorized) {
+        bot.sendMessage(process.env.CHAT_ID!, auth.message!);
+        return;
+    }
 
     const prompt = msg.text.split(' ').slice(1).join(' ');
 
@@ -287,7 +316,11 @@ bot.onText(/\/getfile/, async (msg: any) => {
 });
 
 bot.onText(/\/status/, (msg: any) => {
-    if (!isAuthorized(msg)) return;
+    const auth = isAuthorized(msg);
+    if (!auth.authorized) {
+        bot.sendMessage(process.env.CHAT_ID!, auth.message!);
+        return;
+    }
 
     getLog().then((log: string) => {
         try {
