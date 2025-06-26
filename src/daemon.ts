@@ -288,19 +288,24 @@ bot.onText(/\/getfile/, async (msg: any) => {
 
 bot.onText(/\/status/, (msg: any) => {
     if (!isAuthorized(msg)) return;
-    getLog().then((log: any) => {
-        if (Array.isArray(log)) {
-            const filteredLog = log.filter((item: any) => item.type === 'command' || item.type === 'watch_desktop').slice(-10);
-            const formattedLog = filteredLog.map((item: any) => JSON.stringify(item, null, 2)).join('\n\n');
-            bot.sendMessage(process.env.CHAT_ID!, `Here's the last 10 commands Gofer has run: 
-            ${formattedLog}
-            `);
-        } else {
+
+    getLog().then((log: string) => {
+        try {
+            const logData = JSON.parse(log);
+            const filteredLog = logData.filter((item: any) => item.type === 'command' || item.type === 'watch_desktop').slice(-10).reverse();
+            const formattedLog = filteredLog.map((item: any) => {
+                if (item.type === 'command') {
+                    return `Command: ${item.data.command}\nOutput: ${item.data.output || '(no output)'}`;
+                } else if (item.type === 'watch_desktop') {
+                    return `Desktop Watch: ${item.data.message || 'Desktop monitoring activity'}`;
+                }
+                return '';
+            }).join('\n\n');
+            bot.sendMessage(process.env.CHAT_ID!, `Here's the last 10 commands Gofer has run (most recent first):\n\n${formattedLog}`);
+        } catch (error) {
+            console.error('Error getting log:', error);
             bot.sendMessage(process.env.CHAT_ID!, 'Error: Unable to retrieve log data');
         }
-    }).catch((error: any) => {
-        console.error('Error getting log:', error);
-        bot.sendMessage(process.env.CHAT_ID!, 'Error: Unable to retrieve log data');
     });
 });
 
