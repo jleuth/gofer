@@ -193,6 +193,58 @@ export async function done(message: string) {
     return { success: true, message: "Task marked as complete" };
 }
 
+/**
+ * getLog function.
+ */
+export async function getLog() {
+    const logPath = path.join(__dirname, "log.json");
+    return fs.readFileSync(logPath, "utf-8");
+}
+
+/**
+ * writeToLog function.
+ */
+export async function writeToLog(type: string, data: any, success: boolean) {
+    const logPath = path.join(__dirname, "log.json");
+    console.log(logPath);
+    
+    try {
+        let logData = [];
+        
+        // Read existing log if it exists
+        if (fs.existsSync(logPath)) {
+            const existingLog = fs.readFileSync(logPath, "utf-8");
+            logData = JSON.parse(existingLog);
+        } else { // If the file doesn't exist, create an empty array in log.json
+            logData = [];
+        }
+        
+        // Add new log entry
+        const logEntry = {
+            timestamp: new Date().toISOString(),
+            type: type,
+            data: data,
+            success: success
+        };
+        
+        logData.push(logEntry);
+        
+        // Keep only the last 100 entries to prevent file from growing too large
+        if (logData.length > 100) {
+            logData = logData.slice(-100);
+        }
+        
+        // Write back to file
+        fs.writeFileSync(logPath, JSON.stringify(logData, null, 2));
+        
+        return { success: true, message: "Entry logged successfully" };
+    } catch (error) {
+        console.error("Error writing to log:", error);
+        return { success: false, message: `Error writing to log: ${error}` };
+    }
+}
+
+
 // =========================
 // Telegram bot commands
 // =========================
@@ -219,7 +271,7 @@ bot.onText(/\/help/, (msg: any) => {
             'run - Send Gofer a new task to run \n' +
             'status - Check the status of a task \n' + // todo
             'screenshot - Manually grab a screenshot of the desktop \n' +
-            'getfile - Have Gofer send you a file from your computer \n' + // todo
+            'getfile - Have Gofer send you a file from your computer \n' +
             'cancel - Immediately cancel the currently running task \n' + // todo
             'shutdown - Stop the Gofer server on your computer \n' +
             'help - Show a list of commands \n' +
@@ -274,6 +326,24 @@ bot.onText(/\/getfile/, async (msg: any) => {
 
         console.log(result);
     }
+});
+
+bot.onText(/\/status/, (msg: any) => {
+    if (!isAuthorized(msg)) return;
+    getLog().then((log: any) => {
+        if (Array.isArray(log)) {
+            const filteredLog = log.filter((item: any) => item.type === 'command' || item.type === 'watch_desktop').slice(-10);
+            const formattedLog = filteredLog.map((item: any) => JSON.stringify(item, null, 2)).join('\n\n');
+            bot.sendMessage(process.env.CHAT_ID!, `Here's the last 10 commands Gofer has run: 
+            ${formattedLog}
+            `);
+        } else {
+            bot.sendMessage(process.env.CHAT_ID!, 'Error: Unable to retrieve log data');
+        }
+    }).catch((error: any) => {
+        console.error('Error getting log:', error);
+        bot.sendMessage(process.env.CHAT_ID!, 'Error: Unable to retrieve log data');
+    });
 });
 
 // =========================

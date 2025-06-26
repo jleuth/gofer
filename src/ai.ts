@@ -1,6 +1,6 @@
 import { Agent, tool, Runner, setDefaultOpenAIKey } from "@openai/agents";
 import { Task } from "@/types";
-import { executeCommand, watchDesktop, promptUser, updateUser, done } from "@/daemon";
+import { executeCommand, watchDesktop, promptUser, updateUser, done, getLog, writeToLog } from "@/daemon";
 import { z } from "zod";
 import * as fs from 'fs';
 import * as path from 'path';
@@ -29,6 +29,7 @@ export const commandTool = tool({
     execute: async (input: { cmd: string }) => {
         console.log("TOOL: execute_command called with:", input);
         const result = await executeCommand(input.cmd);
+        await writeToLog("command", { command: input.cmd, output: result.stdout, success: result.success }, result.success);
         console.log("TOOL: execute_command result:", result);
         return result;
     }
@@ -41,7 +42,10 @@ export const riskyCommandTool = tool({
     needsApproval: true, // always interrupt for approval
     execute: async ({ cmd }) => {
         console.log("TOOL: execute_risky_command called with:", cmd);
-        return await executeCommand(cmd);
+        const result = await executeCommand(cmd);
+        await writeToLog("risky_command", { command: cmd, output: result.stdout, success: result.success }, result.success);
+        console.log("TOOL: execute_risky_command result:", result);
+        return result;
     }
 });
 
@@ -55,6 +59,7 @@ export const watchTool = tool({
     execute: async (input: { path: string, task: string }) => {
         console.log("TOOL: watch_desktop called with:", input);
         const result = await watchDesktop(input.path, input.task);
+        await writeToLog("watch_desktop", { path: input.path, task: input.task, result }, true);
         console.log("TOOL: watch_desktop result:", result);
         return result;
     }
@@ -69,6 +74,7 @@ export const promptTool = tool({
     execute: async (input: { prompt: string }) => {
         console.log("TOOL: prompt_user called with:", input);
         const result = await promptUser(input.prompt);
+        await writeToLog("prompt_user", { prompt: input.prompt, response: result }, true);
         console.log("TOOL: prompt_user result:", result);
         return result;
     }
@@ -83,6 +89,7 @@ export const updateTool = tool({
     execute: async (input: { message: string }) => {
         console.log("TOOL: update_user called with:", input);
         const result = await updateUser(input.message);
+        await writeToLog("update_user", { message: input.message, result }, true);
         console.log("TOOL: update_user result:", result);
         return result;
     }
@@ -97,6 +104,7 @@ export const doneTool = tool({ // idk if i wanna keep this tool or not
     execute: async (input: { message: string }) => {
         console.log("TOOL: done_with_task called with:", input);
         const result = await done(input.message);
+        await writeToLog("done_with_task", { message: input.message, result }, true);
         console.log("TOOL: done_with_task result:", result);
         return result;
     }
