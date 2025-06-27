@@ -40,18 +40,24 @@ async function launchRepl() {
     const React = (await import('react')) as any;
     const { render, Text, Box } = ink;
 
+    // Load chalk for additional styling (bold text, dim text)
+    // @ts-ignore
+    const chalk = (await import('chalk')).default as any;
+
+    const bannerLines = [
+        React.createElement(Text, { key: 'title' }, [
+            chalk.hex('#FFA500')('★ '), // star in orange-ish color
+            chalk.bold.white('Welcome to Gofer!')
+        ]),
+        React.createElement(Text, { dimColor: true, key: 'subtitle' }, '.help for help, write anything to run a task'),
+        React.createElement(Text, { dimColor: true, key: 'cwd' }, `cwd: ${process.cwd()}`)
+    ];
+
     render(
         React.createElement(
-            Box || Text,
-            { flexDirection: 'column' },
-            [
-                React.createElement(Text, { color: 'green', key: 'welcome' }, 'Welcome to Gofer REPL!'),
-                React.createElement(Text, { key: 'info1' }, 'Type your tasks directly, or use these commands:'),
-                React.createElement(Text, { key: 'cmd1' }, '  .help - Show this help message'),
-                React.createElement(Text, { key: 'cmd2' }, '  .context - Show current execution context'),
-                React.createElement(Text, { key: 'cmd3' }, '  .exit - Exit the REPL'),
-                React.createElement(Text, { key: 'blank' }, '')
-            ]
+            Box,
+            { borderStyle: 'round', borderColor: 'orange', flexDirection: 'column', paddingX: 1, paddingY: 0 },
+            bannerLines
         )
     );
     
