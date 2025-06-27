@@ -114,7 +114,7 @@ const gofer = new Agent({
 
 console.log("Main Gofer agent created with all tools");
 
-export async function runTask(taskInput: Task | string) {
+export async function runTask(taskInput: Task | string, source?: string) {
     const task: Task = typeof taskInput === "string"
         ? { prompt: taskInput, from: "telegram" }
         : taskInput;
