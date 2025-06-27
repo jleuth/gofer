@@ -1,6 +1,8 @@
 # Gofer
 
-Gofer is an AI agent that lives on your computer to take care of tasks while you're away. It can execute commands, monitor your desktop for changes, and communicate with you via Telegram or a local REPL interface.
+## Gofer is an AI agent that lives on your computer to take care of tasks while you're away. It can execute commands, monitor your desktop for changes, and communicate with you via Telegram or a local REPL interface.
+
+[![Watch a demo](https://raw.githubusercontent.com/jleuth/gofer/main/demo.mp4)]
 
 ## Features
 
