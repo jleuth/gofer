@@ -46,15 +46,15 @@ export const riskyCommandTool = tool({
 
 export const watchTool = tool({
     name: "watch_desktop",
-    description: "Watch the desktop for changes. Provide the path of /tmp and the exact task that was provided to you by the user",
+    description: "Watch the desktop for changes. Provide the exact task that was provided to you by the user",
     parameters: z.object({
         path: z.string(),
         task: z.string()
     }),
     execute: async (input: { path: string, task: string }) => {
         console.log("TOOL: watch_desktop called with:", input);
-        const result = await watchDesktop(input.path, input.task);
-        await writeToLog("watch_desktop", { path: input.path, task: input.task, result }, true);
+        const result = await watchDesktop(input.task);
+        await writeToLog("watch_desktop", { task: input.task, result }, true);
         console.log("TOOL: watch_desktop result:", result);
         return result;
     }
@@ -108,7 +108,7 @@ export const doneTool = tool({
 const gofer = new Agent({
     name: "Gofer",
     instructions: systemPrompt,
-    model: "gpt-4.1-mini",
+    model: process.env.GOFER_MODEL,
     tools: [commandTool, riskyCommandTool, promptTool, updateTool, doneTool, watchTool]
 });
 

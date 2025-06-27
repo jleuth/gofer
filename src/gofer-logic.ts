@@ -35,6 +35,19 @@ export function getContext(): ExecutionContext {
  * Executes a shell command and returns a promise with the result.
  */
 export function executeCommand(cmd: string): Promise<{ success: boolean, stdout: string, stderr: string }> {
+
+    if (process.env.ENABLE_COMMAND_EXECUTION !== 'true') {
+        return new Promise(resolve => {
+            exec(cmd, () => {
+                resolve({
+                    success: false,
+                    stdout: '',
+                    stderr: 'Command execution is currently disabled.'
+                });
+            });
+        });
+    }
+
     const forbiddenPatterns = [
         /\brm\s+-rf?\s+\/\s*--no-preserve-root\b/i,
         /\bdd\s+if=.*\s+of=\/dev\/(sda|nvme|hda)[0-9]*/i,
@@ -72,8 +85,13 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
 /**
  * Watches the desktop for changes and uses OpenAI to determine if a task is complete.
  */
-export async function watchDesktop(watchPath: string, task: string) {
-    console.log(`Watching desktop at path: ${watchPath}`);
+export async function watchDesktop(task: string) {
+
+    if (process.env.ENABLE_WATCHER !== 'true') {
+        return {success: false, message: 'Desktop watching is currently disabled.'}
+    }
+
+    console.log(`Watching desktop at path: /tmp`);
     const message = `Gofer started watching the desktop for changes`;
     if (currentContext === 'telegram') {
         bot.sendMessage(process.env.CHAT_ID!, message);
@@ -87,17 +105,17 @@ export async function watchDesktop(watchPath: string, task: string) {
         'sleep', 'infinity'
     ], { stdio: 'ignore' });
 
-    await executeCommand(`spectacle -m -b -n -o ${watchPath}/startImage.png`);
-    const startImage = PNG.sync.read(fs.readFileSync(`${watchPath}/startImage.png`));
-    const startImageBase64 = fs.readFileSync(`${watchPath}/startImage.png`, 'base64');
+    await executeCommand(`spectacle -m -b -n -o /tmp/startImage.png`);
+    const startImage = PNG.sync.read(fs.readFileSync(`/tmp/startImage.png`));
+    const startImageBase64 = fs.readFileSync(`/tmp/startImage.png`, 'base64');
 
     while (true) {
         try {
             await new Promise(resolve => setTimeout(resolve, 60000));
 
-            await executeCommand(`spectacle -m -b -n -o ${watchPath}/latestImage.png`);
-            let latestImage = PNG.sync.read(fs.readFileSync(`${watchPath}/latestImage.png`));
-            let latestImageBase64 = fs.readFileSync(`${watchPath}/latestImage.png`, 'base64');
+            await executeCommand(`spectacle -m -b -n -o /tmp/latestImage.png`);
+            let latestImage = PNG.sync.read(fs.readFileSync(`/tmp/latestImage.png`));
+            let latestImageBase64 = fs.readFileSync(`/tmp/latestImage.png`, 'base64');
             const { width, height } = startImage;
 
             if (latestImage.width !== width || latestImage.height !== height) {
@@ -120,7 +138,7 @@ export async function watchDesktop(watchPath: string, task: string) {
 
             if (changePercentage > .5) {
                 const result = await openai.responses.create({
-                    model: "gpt-4.1-mini",
+                    model: process.env.WATCHER_MODEL,
                     input: [
                         {
                             role: "user",
@@ -146,10 +164,10 @@ export async function watchDesktop(watchPath: string, task: string) {
                     const message = `Gofer stopped watching the desktop for changes. The final screenshot is attached.`;
                     if (currentContext === 'telegram') {
                         bot.sendMessage(process.env.CHAT_ID!, message);
-                        bot.sendDocument(process.env.CHAT_ID!, `${watchPath}/latestImage.png`);
+                        bot.sendDocument(process.env.CHAT_ID!, `/tmp/latestImage.png`);
                     } else {
                         console.log(`[REPL] ${message}`);
-                        console.log(`[REPL] Screenshot saved to: ${watchPath}/latestImage.png`);
+                        console.log(`[REPL] Screenshot saved to: /tmp/latestImage.png`);
                     }
                     return { success: true, message: "Desktop task completed. Watcher said: " + finalResult };
                 }
@@ -239,6 +257,11 @@ export async function getLog() {
  * writeToLog function.
  */
 export async function writeToLog(type: string, data: any, success: boolean) {
+
+    if (process.env.ENABLE_LOGGING !== 'true') {
+        return {success: false, message: "Logging is currently disabled."}
+    }
+
     const logPath = path.join(__dirname, "log.json");
     
     try {
@@ -288,6 +311,11 @@ function isAuthorized(msg: any): { authorized: boolean; message?: string } {
 }
 
 export function setupTelegramBot() {
+
+    if (process.env.ENABLE_TELEGRAM !== 'true') {
+        return;
+    }
+
     bot.onText(/\/start/, (msg: any) => {
         bot.sendMessage(process.env.CHAT_ID!, 'Hey! I\'m your Gofer agent. What can I do for you?');
     });
