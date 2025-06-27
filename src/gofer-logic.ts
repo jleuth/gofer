@@ -7,12 +7,10 @@ import dotenv from 'dotenv';
 import OpenAI from "openai";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
-
+import TelegramBot from 'node-telegram-bot-api';
 // @ts-ignore
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// @ts-ignore
-const TelegramBot = (await import('node-telegram-bot-api')).default;
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
 const openai = new OpenAI();
 const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: true });
