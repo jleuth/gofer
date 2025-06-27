@@ -1,6 +1,6 @@
 import { Agent, tool, Runner, setDefaultOpenAIKey } from "@openai/agents";
 import { Task } from "@/types";
-import { executeCommand, watchDesktop, promptUser, updateUser, done, getLog, writeToLog } from "@/daemon";
+import { executeCommand, watchDesktop, promptUser, updateUser, done, getLog, writeToLog } from "@/gofer-logic";
 import { z } from "zod";
 import * as fs from 'fs';
 import * as path from 'path';
