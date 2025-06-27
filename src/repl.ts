@@ -5,6 +5,12 @@ import { setContext, getContext } from "./gofer-logic";
 // Ink will be loaded dynamically when the REPL launches to avoid type issues during compilation.
 
 const program = new Command();
+// @ts-ignore
+const ink = await import('ink') as any;
+// @ts-ignore
+const React = (await import('react')) as any;
+// @ts-ignore
+const chalk = (await import('chalk')).default as any;
 
 program
     .name("Gofer")
@@ -29,20 +35,16 @@ program.parseAsync(process.argv).catch(err => {
     process.exit(1);
 });
 
-async function launchRepl() {
+async function style() {
     setContext('repl');
 
     // Dynamically import Ink and React for styled CLI output
     // Using dynamic import keeps this file self-contained and bypasses type-resolution issues.
-    // @ts-ignore
-    const ink = await import('ink') as any;
-    // @ts-ignore
-    const React = (await import('react')) as any;
     const { render, Text, Box } = ink;
 
     // Load chalk for additional styling (bold text, dim text)
     // @ts-ignore
-    const chalk = (await import('chalk')).default as any;
+
 
     const bannerLines = [
         React.createElement(Text, { key: 'title' }, [
@@ -53,15 +55,28 @@ async function launchRepl() {
         React.createElement(Text, { dimColor: true, key: 'cwd' }, `cwd: ${process.cwd()}`)
     ];
 
-    render(
-        React.createElement(
-            Box,
-            { borderStyle: 'round', borderColor: 'orange', flexDirection: 'column', paddingX: 1, paddingY: 0 },
-            bannerLines
-        )
+    const inputBox = React.createElement(
+        Box,
+        { borderStyle: 'round', borderColor: 'orange', flexDirection: 'column', paddingX: 1, paddingY: 0 },
+        [
+            React.createElement(Text, { key: 'title' }, [
+                chalk.hex('#FFA500')('★ '), // star in orange-ish color
+                chalk.bold.white('Welcome to Gofer!')
+            ]),
+        ],
+        Box,
+        { borderStyle: 'round', borderColor: 'white', flexDirection: 'column', paddingX: 1, paddingY: 0 },
+        [
+            React.createElement(Text, { key: 'prompt' }, '> ')
+        ]
     );
-    
-    const r = repl.start('gofer> ');
+
+    render(inputBox);
+}
+
+async function launchRepl() {
+    await style();
+    const r = repl.start('');
 
     // Handle task execution through input event
     r.on('line', async (input: string) => {
@@ -112,6 +127,8 @@ async function launchRepl() {
         console.log('Exiting Gofer CLI...');
         process.exit(0);
     });
+
+
 }
 
 
