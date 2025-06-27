@@ -2,6 +2,7 @@ import { Command } from "commander";
 import repl from "repl";
 import { runTask } from "./ai";
 import { setContext, getContext } from "./gofer-logic";
+// Ink will be loaded dynamically when the REPL launches to avoid type issues during compilation.
 
 const program = new Command();
 
@@ -28,16 +29,31 @@ program.parseAsync(process.argv).catch(err => {
     process.exit(1);
 });
 
-
-
-function launchRepl() {
+async function launchRepl() {
     setContext('repl');
-    console.log('Welcome to Gofer REPL!');
-    console.log('Type your tasks directly, or use these commands:');
-    console.log('  .help - Show this help message');
-    console.log('  .context - Show current execution context');
-    console.log('  .exit - Exit the REPL');
-    console.log('');
+
+    // Dynamically import Ink and React for styled CLI output
+    // Using dynamic import keeps this file self-contained and bypasses type-resolution issues.
+    // @ts-ignore
+    const ink = await import('ink') as any;
+    // @ts-ignore
+    const React = (await import('react')) as any;
+    const { render, Text, Box } = ink;
+
+    render(
+        React.createElement(
+            Box || Text,
+            { flexDirection: 'column' },
+            [
+                React.createElement(Text, { color: 'green', key: 'welcome' }, 'Welcome to Gofer REPL!'),
+                React.createElement(Text, { key: 'info1' }, 'Type your tasks directly, or use these commands:'),
+                React.createElement(Text, { key: 'cmd1' }, '  .help - Show this help message'),
+                React.createElement(Text, { key: 'cmd2' }, '  .context - Show current execution context'),
+                React.createElement(Text, { key: 'cmd3' }, '  .exit - Exit the REPL'),
+                React.createElement(Text, { key: 'blank' }, '')
+            ]
+        )
+    );
     
     const r = repl.start('gofer> ');
 
