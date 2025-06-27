@@ -3,7 +3,7 @@ import repl from "repl";
 import { runTask } from "./ai";
 import { setContext, getContext } from "./gofer-logic";
 // @ts-ignore
-import { render, Text, Box} from 'ink';
+import { render, Text, Box } from 'ink';
 // @ts-ignore
 import * as React from 'react';
 // @ts-ignore
@@ -34,12 +34,11 @@ program.parseAsync(process.argv).catch(err => {
     process.exit(1);
 });
 
-async function style() {
+function Banner() {
     setContext('repl');
 
-    function Banner() {
         return (
-            <Box flexDirection="column" padding={1} borderColor="white" borderStyle="round">
+            <Box flexDirection="column" padding={1} borderColor="orange" borderStyle="round">
                 <Text>
                     {chalk.hex('#FFA500')('★ ')}
                     {chalk.bold.white('Welcome to Gofer!')}
@@ -48,12 +47,21 @@ async function style() {
                 <Text dimColor>{`cwd: ${process.cwd()}`}</Text>
             </Box>
         );
-    }
-}   
+}
+
+let consoleRender = render(<Banner />)
+consoleRender.unmount()
 
 async function launchRepl() {
-    await style();
-    const r = repl.start('');
+    setContext('repl');
+
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Sleep to bypass a race condition
+    
+    const r = repl.start({
+        prompt: "> ",
+        ignoreUndefined: true
+    });
+    
 
     // Handle task execution through input event
     r.on('line', async (input: string) => {
@@ -104,6 +112,4 @@ async function launchRepl() {
         console.log('Exiting Gofer CLI...');
         process.exit(0);
     });
-
-
-    }
+}
