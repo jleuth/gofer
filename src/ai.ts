@@ -1,6 +1,6 @@
 import { Agent, tool, Runner, setDefaultOpenAIKey } from "@openai/agents";
 import { Task } from "@/types";
-import { executeCommand, watchDesktop, promptUser, updateUser, done, getLog, writeToLog } from "@/gofer-logic";
+import { executeCommand, watchDesktop, promptUser, updateUser, done, getLog, writeToLog, setContext } from "@/gofer-logic";
 import { z } from "zod";
 import * as fs from 'fs';
 import * as path from 'path';
@@ -116,8 +116,15 @@ console.log("Main Gofer agent created with all tools");
 
 export async function runTask(taskInput: Task | string, source?: string) {
     const task: Task = typeof taskInput === "string"
-        ? { prompt: taskInput, from: "telegram" }
+        ? { prompt: taskInput, from: source as "telegram" | "repl" || "telegram" }
         : taskInput;
+
+    // Set context based on source
+    if (source === 'repl') {
+        setContext('repl');
+    } else {
+        setContext('telegram');
+    }
 
     console.log("=== TASK START ===", task.prompt);
 

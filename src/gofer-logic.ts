@@ -15,6 +15,22 @@ dotenv.config({ path: path.join(__dirname, '../.env.local') });
 const openai = new OpenAI();
 const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: true });
 
+// Context type for different execution environments
+export type ExecutionContext = 'telegram' | 'repl';
+
+// Global context variable
+let currentContext: ExecutionContext = 'telegram';
+
+// Function to set the current context
+export function setContext(context: ExecutionContext) {
+    currentContext = context;
+}
+
+// Function to get the current context
+export function getContext(): ExecutionContext {
+    return currentContext;
+}
+
 /**
  * Executes a shell command and returns a promise with the result.
  */
@@ -28,7 +44,12 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
 
     for (const pattern of forbiddenPatterns) {
         if (pattern.test(cmd)) {
-            bot.sendMessage(process.env.CHAT_ID!, `Gofer attempted to run a forbidden command: ${cmd}. Execution was blocked.`);
+            const message = `Gofer attempted to run a forbidden command: ${cmd}. Execution was blocked.`;
+            if (currentContext === 'telegram') {
+                bot.sendMessage(process.env.CHAT_ID!, message);
+            } else {
+                console.log(`[REPL] ${message}`);
+            }
             return Promise.resolve({
                 success: false,
                 stdout: "",
@@ -53,7 +74,12 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
  */
 export async function watchDesktop(watchPath: string, task: string) {
     console.log(`Watching desktop at path: ${watchPath}`);
-    bot.sendMessage(process.env.CHAT_ID!, `Gofer started watching the desktop for changes`);
+    const message = `Gofer started watching the desktop for changes`;
+    if (currentContext === 'telegram') {
+        bot.sendMessage(process.env.CHAT_ID!, message);
+    } else {
+        console.log(`[REPL] ${message}`);
+    }
 
     const inhibitor = spawn('systemd-inhibit', [
         '--what=idle:sleep:handle-lid-switch',
@@ -117,15 +143,26 @@ export async function watchDesktop(watchPath: string, task: string) {
                 )) {
                     console.log("Task completed! Stopping desktop watch.");
                     inhibitor.kill();
-                    bot.sendMessage(process.env.CHAT_ID!, `Gofer stopped watching the desktop for changes. The final screenshot is attached.`);
-                    bot.sendDocument(process.env.CHAT_ID!, `${watchPath}/latestImage.png`);
+                    const message = `Gofer stopped watching the desktop for changes. The final screenshot is attached.`;
+                    if (currentContext === 'telegram') {
+                        bot.sendMessage(process.env.CHAT_ID!, message);
+                        bot.sendDocument(process.env.CHAT_ID!, `${watchPath}/latestImage.png`);
+                    } else {
+                        console.log(`[REPL] ${message}`);
+                        console.log(`[REPL] Screenshot saved to: ${watchPath}/latestImage.png`);
+                    }
                     return { success: true, message: "Desktop task completed. Watcher said: " + finalResult };
                 }
             }
         } catch (error: any) {
             console.error("Error in watch loop:", error);
             inhibitor.kill();
-            bot.sendMessage(process.env.CHAT_ID!, `An error caused Gofer to stop watching the desktop for changes`);
+            const message = `An error caused Gofer to stop watching the desktop for changes`;
+            if (currentContext === 'telegram') {
+                bot.sendMessage(process.env.CHAT_ID!, message);
+            } else {
+                console.log(`[REPL] ${message}`);
+            }
             return { success: false, message: `Error watching desktop: ${error.message}` };
         }
     }
@@ -135,25 +172,46 @@ export async function watchDesktop(watchPath: string, task: string) {
  * user prompt function.
  */
 export async function promptUser(prompt: string) {
-    bot.sendMessage(process.env.CHAT_ID!, `Gofer asked: ${prompt}`);
-    
-    return new Promise((resolve) => {
-        const messageHandler = (msg: any) => {
-            if (msg.chat.id.toString() === process.env.CHAT_ID) {
-                bot.removeListener('message', messageHandler);
-                resolve({ success: true, response: msg.text });
-            }
-        };
+    if (currentContext === 'telegram') {
+        bot.sendMessage(process.env.CHAT_ID!, `Gofer asked: ${prompt}`);
+        
+        return new Promise((resolve) => {
+            const messageHandler = (msg: any) => {
+                if (msg.chat.id.toString() === process.env.CHAT_ID) {
+                    bot.removeListener('message', messageHandler);
+                    resolve({ success: true, response: msg.text });
+                }
+            };
 
-        bot.on('message', messageHandler);
-    });
+            bot.on('message', messageHandler);
+        });
+    } else {
+        // REPL context - use readline for user input
+        const readline = require('readline');
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+
+        return new Promise((resolve) => {
+            console.log(`[REPL] Gofer asks: ${prompt}`);
+            rl.question('Your response: ', (answer: string) => {
+                rl.close();
+                resolve({ success: true, response: answer });
+            });
+        });
+    }
 }
 
 /**
  * user update function.
  */
 export async function updateUser(message: string) {
-    bot.sendMessage(process.env.CHAT_ID!, `Gofer sent an update: ${message}`);
+    if (currentContext === 'telegram') {
+        bot.sendMessage(process.env.CHAT_ID!, `Gofer sent an update: ${message}`);
+    } else {
+        console.log(`[REPL] Gofer update: ${message}`);
+    }
     return { success: true, message: "Update sent to user" };
 }
 
@@ -161,7 +219,11 @@ export async function updateUser(message: string) {
  * done function.
  */
 export async function done(message: string) {
-    bot.sendMessage(process.env.CHAT_ID!, `Task completed: ${message}`);
+    if (currentContext === 'telegram') {
+        bot.sendMessage(process.env.CHAT_ID!, `Task completed: ${message}`);
+    } else {
+        console.log(`[REPL] Task completed: ${message}`);
+    }
     return { success: true, message: "Task marked as complete" };
 }
 
@@ -264,6 +326,7 @@ export function setupTelegramBot() {
             return;
         }
 
+        setContext('telegram');
         runTask(taskPrompt);
         bot.sendMessage(process.env.CHAT_ID!, 'Now running your task...');
     });
@@ -282,6 +345,7 @@ export function setupTelegramBot() {
             return;
         }
 
+        setContext('telegram');
         getLog().then((log: string) => {
             try {
                 const logData = JSON.parse(log);
