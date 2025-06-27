@@ -2,15 +2,14 @@ import { Command } from "commander";
 import repl from "repl";
 import { runTask } from "./ai";
 import { setContext, getContext } from "./gofer-logic";
-// Ink will be loaded dynamically when the REPL launches to avoid type issues during compilation.
-
+// @ts-ignore
+import { render, Text, Box} from 'ink';
+// @ts-ignore
+import * as React from 'react';
+// @ts-ignore
+import chalk from 'chalk';
 const program = new Command();
-// @ts-ignore
-const ink = await import('ink') as any;
-// @ts-ignore
-const React = (await import('react')) as any;
-// @ts-ignore
-const chalk = (await import('chalk')).default as any;
+
 
 program
     .name("Gofer")
@@ -38,41 +37,19 @@ program.parseAsync(process.argv).catch(err => {
 async function style() {
     setContext('repl');
 
-    // Dynamically import Ink and React for styled CLI output
-    // Using dynamic import keeps this file self-contained and bypasses type-resolution issues.
-    const { render, Text, Box } = ink;
-
-    // Load chalk for additional styling (bold text, dim text)
-    // @ts-ignore
-
-
-    const bannerLines = [
-        React.createElement(Text, { key: 'title' }, [
-            chalk.hex('#FFA500')('★ '), // star in orange-ish color
-            chalk.bold.white('Welcome to Gofer!')
-        ]),
-        React.createElement(Text, { dimColor: true, key: 'subtitle' }, '.help for help, write anything to run a task'),
-        React.createElement(Text, { dimColor: true, key: 'cwd' }, `cwd: ${process.cwd()}`)
-    ];
-
-    const inputBox = React.createElement(
-        Box,
-        { borderStyle: 'round', borderColor: 'orange', flexDirection: 'column', paddingX: 1, paddingY: 0 },
-        [
-            React.createElement(Text, { key: 'title' }, [
-                chalk.hex('#FFA500')('★ '), // star in orange-ish color
-                chalk.bold.white('Welcome to Gofer!')
-            ]),
-        ],
-        Box,
-        { borderStyle: 'round', borderColor: 'white', flexDirection: 'column', paddingX: 1, paddingY: 0 },
-        [
-            React.createElement(Text, { key: 'prompt' }, '> ')
-        ]
-    );
-
-    render(inputBox);
-}
+    function Banner() {
+        return (
+            <Box flexDirection="column" padding={1} borderColor="white" borderStyle="round">
+                <Text>
+                    {chalk.hex('#FFA500')('★ ')}
+                    {chalk.bold.white('Welcome to Gofer!')}
+                </Text>
+                <Text dimColor>.help for help, write anything to run a task</Text>
+                <Text dimColor>{`cwd: ${process.cwd()}`}</Text>
+            </Box>
+        );
+    }
+}   
 
 async function launchRepl() {
     await style();
@@ -129,9 +106,4 @@ async function launchRepl() {
     });
 
 
-}
-
-
-
-
-
+    }
