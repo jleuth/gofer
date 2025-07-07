@@ -1,6 +1,7 @@
 import { Agent, tool, Runner, setDefaultOpenAIKey } from "@openai/agents";
 import { Task } from "@/types";
 import { executeCommand, watchDesktop, promptUser, updateUser, done, getLog, writeToLog, setContext } from "@/gofer-logic";
+import { getProviderModel, listProviders } from "@/providers";
 import { z } from "zod";
 import * as fs from 'fs';
 import * as path from 'path';
@@ -10,7 +11,10 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-setDefaultOpenAIKey(process.env.OPENAI_API_KEY!);
+// Still set OpenAI key for backwards compatibility
+if (process.env.OPENAI_API_KEY) {
+    setDefaultOpenAIKey(process.env.OPENAI_API_KEY);
+}
 
 console.log("Loading system prompts...");
 const systemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/SYSTEM.md"), "utf-8");
@@ -106,12 +110,51 @@ export const doneTool = tool({
     }
 })
 
-const gofer = new Agent({
-    name: "Gofer",
-    instructions: systemPrompt,
-    model: process.env.GOFER_MODEL,
-    tools: [commandTool, riskyCommandTool, promptTool, updateTool, doneTool, watchTool]
-});
+export const listProvidersTool = tool({
+    name: "list_providers",
+    description: "List all available AI providers and their models",
+    parameters: z.object({}),
+    execute: async () => {
+        console.log("TOOL: list_providers called");
+        const providers = listProviders();
+        const result = { providers };
+        console.log("TOOL: list_providers result:", result);
+        return result;
+    }
+})
+
+// Create agent with configurable provider
+function createGoferAgent() {
+    const provider = process.env.GOFER_PROVIDER || 'openai';
+    const model = process.env.GOFER_MODEL;
+    
+    let agentModel;
+    
+    if (provider === 'openai' && !model) {
+        // Use default OpenAI model if no provider-specific model configured
+        agentModel = process.env.GOFER_MODEL || 'gpt-4o-mini';
+    } else if (provider !== 'openai' || model) {
+        // Use provider system for non-OpenAI providers or when model is explicitly specified
+        try {
+            agentModel = getProviderModel(provider, model);
+        } catch (error) {
+            console.error(`Failed to initialize ${provider} provider:`, error);
+            console.log('Falling back to OpenAI...');
+            agentModel = process.env.GOFER_MODEL || 'gpt-4o-mini';
+        }
+    } else {
+        agentModel = process.env.GOFER_MODEL || 'gpt-4o-mini';
+    }
+    
+    return new Agent({
+        name: "Gofer",
+        instructions: systemPrompt,
+        model: agentModel,
+        tools: [commandTool, riskyCommandTool, promptTool, updateTool, doneTool, watchTool, listProvidersTool]
+    });
+}
+
+const gofer = createGoferAgent();
 
 console.log("Main Gofer agent created with all tools");
 

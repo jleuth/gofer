@@ -16,11 +16,20 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "providers": "tsx src/provider-cli.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^1.2.12",
+    "@ai-sdk/google": "^1.2.22",
+    "@ai-sdk/mistral": "^1.2.8",
+    "@ai-sdk/openai": "^1.3.23",
+    "@ai-sdk/togetherai": "^0.2.15",
+    "@ai-sdk/xai": "^1.2.17",
     "@anthropic-ai/sdk": "^0.54.0",
-    "@openai/agents": "^0.0.9",
+    "@openai/agents": "^0.0.10",
+    "@openai/agents-extensions": "^0.0.10",
+    "@openrouter/ai-sdk-provider": "^0.7.2",
     "@types/express": "^5.0.3",
     "@types/node": "^24.0.3",
     "@types/pngjs": "^6.0.5",
@@ -30,6 +39,7 @@
     "express": "^5.1.0",
     "ink": "^6.0.1",
     "node-telegram-bot-api": "^0.66.0",
+    "ollama-ai-provider": "^1.2.0",
     "openai": "^5.7.0",
     "pixelmatch": "^7.1.0",
     "pngjs": "^7.0.0",
