@@ -247,7 +247,7 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
             if (pattern.test(cmd)) {
                 const message = `[DEMO MODE] Command blocked for security: ${cmd}`;
                 if (currentContext === 'telegram') {
-                    bot.sendMessage(process.env.CHAT_ID!, message);
+                    safeSendMessage(bot, message);
                 } else {
                     console.log(`[REPL] ${message}`);
                 }
@@ -264,7 +264,7 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
         if (isSafeCommand) {
             const message = `[DEMO MODE] Simulating safe command: ${cmd}`;
             if (currentContext === 'telegram') {
-                bot.sendMessage(process.env.CHAT_ID!, `🔒 ${message}`);
+                safeSendMessage(bot, `🔒 ${message}`);
             } else {
                 console.log(`[REPL] ${message}`);
             }
@@ -648,7 +648,7 @@ export function setupTelegramBot() {
     bot.onText(/\/help/, (msg: any) => {
         const auth = isAuthorized(msg);
         if (auth.authorized) {
-            bot.sendMessage(process.env.CHAT_ID!,
+            bot.sendMessage(msg.chat.id,
                 'Here\'s the availiable commands: \n\n' +
                 'run - Send Gofer a new task to run \n' +
                 'followup - Continue with context from previous commands \n' +
@@ -661,40 +661,40 @@ export function setupTelegramBot() {
                 'To run a command, use /command <passcode> <command> \n'
             );
         } else {
-            bot.sendMessage(process.env.CHAT_ID!, auth.message!);
+            bot.sendMessage(msg.chat.id, auth.message!);
         }
     });
 
     bot.onText(/\/run(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) => {
         const auth = isAuthorized(msg);
         if (!auth.authorized) {
-            bot.sendMessage(process.env.CHAT_ID!, auth.message!);
+            bot.sendMessage(msg.chat.id, auth.message!);
             return;
         }
 
         const taskPrompt = match && match[1] ? match[1].trim() : '';
 
         if (!taskPrompt) {
-            bot.sendMessage(process.env.CHAT_ID!, 'Please provide a task after /run. Example: /run <passcode> build the project');
+            bot.sendMessage(msg.chat.id, 'Please provide a task after /run. Example: /run <passcode> build the project');
             return;
         }
 
         setContext('telegram');
         runTask(taskPrompt);
-        bot.sendMessage(process.env.CHAT_ID!, 'Now running your task...');
+        safeSendMessage(bot, 'Now running your task...');
     });
 
     bot.onText(/\/followup(?:@\w+)?\s+(.+)/, (msg: any, match: RegExpMatchArray | null) => {
         const auth = isAuthorized(msg);
         if (!auth.authorized) {
-            bot.sendMessage(process.env.CHAT_ID!, auth.message!);
+            bot.sendMessage(msg.chat.id, auth.message!);
             return;
         }
 
         const followupPrompt = match && match[1] ? match[1].trim() : '';
 
         if (!followupPrompt) {
-            bot.sendMessage(process.env.CHAT_ID!, 'Please provide a followup task. Example: /followup <passcode> continue the previous task');
+            bot.sendMessage(msg.chat.id, 'Please provide a followup task. Example: /followup <passcode> continue the previous task');
             return;
         }
 
@@ -714,41 +714,41 @@ export function setupTelegramBot() {
                 };
                 
                 runTask(task);
-                bot.sendMessage(process.env.CHAT_ID!, 'Now running your followup task with context from previous commands...');
+                safeSendMessage(bot, 'Now running your followup task with context from previous commands...');
             } catch (error) {
                 console.error('Error getting log for followup:', error);
                 runTask(followupPrompt);
-                bot.sendMessage(process.env.CHAT_ID!, 'Now running your followup task (no previous context available)...');
+                safeSendMessage(bot, 'Now running your followup task (no previous context available)...');
             }
         }).catch((error) => {
             console.error('Error reading log for followup:', error);
             runTask(followupPrompt);
-            bot.sendMessage(process.env.CHAT_ID!, 'Now running your followup task (no previous context available)...');
+            safeSendMessage(bot, 'Now running your followup task (no previous context available)...');
         });
     });
 
     bot.onText(/\/shutdown/, (msg: any) => {
-        bot.sendMessage(process.env.CHAT_ID!, 'Shutting down...');
+        safeSendMessage(bot, 'Shutting down...');
         process.exit(0);
     });
 
     bot.onText(/\/screenshot/, async (msg: any) => {
         const auth = isAuthorized(msg);
         if (!auth.authorized) {
-            bot.sendMessage(process.env.CHAT_ID!, auth.message!);
+            bot.sendMessage(msg.chat.id, auth.message!);
             return;
         }
         await executeCommand(`spectacle -b -n -o /tmp/latestImage.png`);
         process.env.NTBA_FIX_350 = 'true';
 
-        bot.sendMessage(process.env.CHAT_ID!, 'Here is the screenshot:');
-        bot.sendDocument(process.env.CHAT_ID!, '/tmp/latestImage.png');
+        bot.sendMessage(msg.chat.id, 'Here is the screenshot:');
+        bot.sendDocument(msg.chat.id, '/tmp/latestImage.png');
     });
 
     bot.onText(/\/getfile/, async (msg: any) => {
         const auth = isAuthorized(msg);
         if (!auth.authorized) {
-            bot.sendMessage(process.env.CHAT_ID!, auth.message!);
+            bot.sendMessage(msg.chat.id, auth.message!);
             return;
         }
 
@@ -756,13 +756,13 @@ export function setupTelegramBot() {
 
         try {
             fs.statSync(prompt);
-            bot.sendMessage(process.env.CHAT_ID!, 'Here is the file:');
-            bot.sendDocument(process.env.CHAT_ID!, prompt);
+            bot.sendMessage(msg.chat.id, 'Here is the file:');
+            bot.sendDocument(msg.chat.id, prompt);
         } catch (error) {
             console.log('There is no file at that path. Gofer will try to find it.');
 
             const result = await runTask(`The user is looking for the file "${prompt}". Use your command line tools to find the path. When calling to done_with_task, reply ONLY with the path, or else we won't be able to send the file. If you can't find the file, reply with "not found". Start by looking in common directories, like ~/Downloads, ~/Documents, ~/Desktop, etc.`);
-            bot.sendDocument(process.env.CHAT_ID!, result.finalOutput as string);
+            bot.sendDocument(msg.chat.id, result.finalOutput as string);
 
             console.log(result);
         }
@@ -771,7 +771,7 @@ export function setupTelegramBot() {
     bot.onText(/\/status/, (msg: any) => {
         const auth = isAuthorized(msg);
         if (!auth.authorized) {
-            bot.sendMessage(process.env.CHAT_ID!, auth.message!);
+            bot.sendMessage(msg.chat.id, auth.message!);
             return;
         }
 
@@ -787,10 +787,10 @@ export function setupTelegramBot() {
                     }
                     return '';
                 }).join('\n\n');
-                bot.sendMessage(process.env.CHAT_ID!, `Here's the last 10 commands Gofer has run (most recent first):\n\n${formattedLog}`);
+                bot.sendMessage(msg.chat.id, `Here's the last 10 commands Gofer has run (most recent first):\n\n${formattedLog}`);
             } catch (error) {
                 console.error('Error getting log:', error);
-                bot.sendMessage(process.env.CHAT_ID!, 'Error: Unable to retrieve log data');
+                bot.sendMessage(msg.chat.id, 'Error: Unable to retrieve log data');
             }
         });
     });
