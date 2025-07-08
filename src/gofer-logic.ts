@@ -12,6 +12,39 @@ import { generateText } from 'ai';
 // @ts-ignore
 import chalk from 'chalk';
 
+// Track the active chat ID for review mode
+let activeChatId: string | null = null;
+
+// Helper function to get the correct chat ID
+function getTargetChatId(): string | null {
+    if (process.env.REVIEW_MODE === 'true') {
+        return activeChatId;
+    } else {
+        return process.env.CHAT_ID || null;
+    }
+}
+
+// Helper function to safely send Telegram messages
+function safeSendMessage(bot: TelegramBot, message: string): void {
+    const chatId = getTargetChatId();
+    if (chatId) {
+        bot.sendMessage(chatId, message).catch((error) => {
+            console.error('Failed to send Telegram message:', error.message);
+        });
+    }
+}
+
+// Helper function to safely send Telegram documents
+function safeSendDocument(bot: TelegramBot, filePath: string, caption?: string): void {
+    const chatId = getTargetChatId();
+    if (chatId) {
+        const options = caption ? { caption } : {};
+        bot.sendDocument(chatId, filePath, options).catch((error) => {
+            console.error('Failed to send Telegram document:', error.message);
+        });
+    }
+}
+
 // Enhanced messaging utilities
 const messenger = {
     repl: (msg: string) => console.log(chalk.blue(`[REPL] ${msg}`)),
@@ -459,7 +492,7 @@ export async function watchDesktop(task: string) {
  */
 export async function promptUser(prompt: string) {
     if (currentContext === 'telegram') {
-        bot.sendMessage(process.env.CHAT_ID!, `Gofer asked: ${prompt}`);
+        safeSendMessage(bot, `Gofer asked: ${prompt}`);
         
         return new Promise((resolve) => {
             const messageHandler = (msg: any) => {
@@ -494,7 +527,7 @@ export async function promptUser(prompt: string) {
  */
 export async function updateUser(message: string) {
     if (currentContext === 'telegram') {
-        bot.sendMessage(process.env.CHAT_ID!, `Gofer sent an update: ${message}`);
+        safeSendMessage(bot, `Gofer sent an update: ${message}`);
     } else {
         console.log(`[REPL] Gofer update: ${message}`);
     }
@@ -506,7 +539,7 @@ export async function updateUser(message: string) {
  */
 export async function done(message: string) {
     if (currentContext === 'telegram') {
-        bot.sendMessage(process.env.CHAT_ID!, `Task completed: ${message}`);
+        safeSendMessage(bot, `Task completed: ${message}`);
     } else {
         console.log(`[REPL] Task completed: ${message}`);
     }
@@ -577,6 +610,8 @@ function isAuthorized(msg: any): { authorized: boolean; message?: string } {
                 message: "Please send your password. The format is /command <password> <prompt/other options>"
             };
         }
+        // Set active chat ID for review mode
+        activeChatId = msg.chat.id.toString();
         return { authorized: true };
     } else {
         // Normal mode: require both chat ID and passcode
