@@ -14,10 +14,15 @@
   "author": "",
   "type": "module",
   "main": "index.js",
+  "bin": {
+    "gofer": "./bin/gofer.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "providers": "tsx src/provider-cli.ts"
+    "providers": "tsx src/provider-cli.ts",
+    "gofer": "tsx src/repl.tsx",
+    "start": "tsx src/daemon.ts"   
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",

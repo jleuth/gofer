@@ -13,22 +13,169 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
 const openai = new OpenAI();
-const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: true });
 
-// Context type for different execution environments
-export type ExecutionContext = 'telegram' | 'repl';
+// Create bot without polling initially - polling will be enabled in setupTelegramBot()
+const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: false });
 
-// Global context variable
-let currentContext: ExecutionContext = 'telegram';
+// Track the current execution context
+let currentContext: 'telegram' | 'repl' = 'repl';
 
 // Function to set the current context
-export function setContext(context: ExecutionContext) {
+export function setContext(context: 'telegram' | 'repl') {
     currentContext = context;
 }
 
-// Function to get the current context
-export function getContext(): ExecutionContext {
-    return currentContext;
+// Check if running in demo mode
+function isDemoMode(): boolean {
+    return process.env.DEMO_MODE === 'true';
+}
+
+// Demo-safe command patterns that are allowed
+const DEMO_SAFE_COMMANDS = [
+    /^ls\b/,
+    /^pwd$/,
+    /^whoami$/,
+    /^date$/,
+    /^echo\s+(?!.*\$)/,  // echo without variable expansion
+    /^cat\s+\/etc\/os-release$/,
+    /^uname\s+-a$/,
+    /^uptime$/,
+    /^df\s+-h$/,
+    /^free\s+-h$/,
+    /^ps\s+aux$/,
+    /^which\s+\w+$/,
+    /^find\s+.*-type\s+f.*-name.*$/,  // safe find commands
+    /^grep\s+.*$/,
+    /^head\s+.*$/,
+    /^tail\s+.*$/,
+    /^wc\s+.*$/,
+    /^sort\s+.*$/,
+    /^uniq\s+.*$/,
+];
+
+// Commands that involve writing or dangerous operations
+const DEMO_FORBIDDEN_PATTERNS = [
+    /\b(rm|rmdir|mv|cp|mkdir|touch|chmod|chown|sudo|su|passwd|useradd|userdel|groupadd|groupdel)\b/i,
+    /\b(apt|yum|dnf|pacman|pip|npm|yarn|cargo|go\s+install)\b/i,
+    /\b(systemctl|service|mount|umount|fdisk|parted|mkfs|dd)\b/i,
+    /\b(git\s+commit|git\s+push|git\s+clone|git\s+pull)\b/i,
+    />/,  // Any output redirection
+    /\|/,  // Pipes (could be used for writes)
+    /\$\{.*\}/,  // Variable expansion
+    /\$\(/,  // Command substitution
+    /`/,   // Backticks
+    /export\s+/i,  // Environment variable setting
+    /source\s+/i,  // Source files
+    /\./,  // Dot sourcing
+];
+
+// Generate demo-safe fake responses
+function generateDemoResponse(cmd: string): { success: boolean, stdout: string, stderr: string } {
+    cmd = cmd.trim().toLowerCase();
+    
+    if (cmd === 'ls' || cmd.startsWith('ls ')) {
+        return {
+            success: true,
+            stdout: 'demo_file1.txt\ndemo_file2.txt\ndemo_folder/\nREADME.md\npackage.json',
+            stderr: ''
+        };
+    }
+    
+    if (cmd === 'pwd') {
+        return {
+            success: true,
+            stdout: '/home/demo-user/demo-workspace',
+            stderr: ''
+        };
+    }
+    
+    if (cmd === 'whoami') {
+        return {
+            success: true,
+            stdout: 'demo-user',
+            stderr: ''
+        };
+    }
+    
+    if (cmd === 'date') {
+        return {
+            success: true,
+            stdout: new Date().toString(),
+            stderr: ''
+        };
+    }
+    
+    if (cmd === 'uname -a') {
+        return {
+            success: true,
+            stdout: 'Linux demo-machine 5.15.0-demo #1 SMP PREEMPT Demo x86_64 GNU/Linux',
+            stderr: ''
+        };
+    }
+    
+    if (cmd === 'uptime') {
+        return {
+            success: true,
+            stdout: '14:32:01 up 2 days, 3:21, 1 user, load average: 0.15, 0.25, 0.30',
+            stderr: ''
+        };
+    }
+    
+    if (cmd === 'df -h') {
+        return {
+            success: true,
+            stdout: 'Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        20G  8.5G   11G  45% /\ntmpfs           2.0G     0  2.0G   0% /tmp',
+            stderr: ''
+        };
+    }
+    
+    if (cmd === 'free -h') {
+        return {
+            success: true,
+            stdout: '               total        used        free      shared  buff/cache   available\nMem:           7.8Gi       2.1Gi       4.2Gi       0.3Gi       1.5Gi       5.1Gi\nSwap:          2.0Gi          0B       2.0Gi',
+            stderr: ''
+        };
+    }
+    
+    if (cmd === 'ps aux') {
+        return {
+            success: true,
+            stdout: 'USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND\ndemo-user   1234  0.1  0.5  12345  6789 pts/0    S    14:30   0:00 bash\ndemo-user   5678  0.0  0.2   8901  2345 pts/0    R    14:32   0:00 ps aux',
+            stderr: ''
+        };
+    }
+    
+    if (cmd.startsWith('cat /etc/os-release')) {
+        return {
+            success: true,
+            stdout: 'NAME="Demo Linux"\nVERSION="1.0 (Demo Edition)"\nID=demo\nID_LIKE=debian\nPRETTY_NAME="Demo Linux 1.0"\nVERSION_ID="1.0"\nHOME_URL="https://demo.example.com/"\nSUPPORT_URL="https://demo.example.com/support"',
+            stderr: ''
+        };
+    }
+    
+    if (cmd.startsWith('echo ')) {
+        const text = cmd.substring(5);
+        return {
+            success: true,
+            stdout: text,
+            stderr: ''
+        };
+    }
+    
+    if (cmd.startsWith('find ')) {
+        return {
+            success: true,
+            stdout: './demo_file1.txt\n./demo_folder/demo_file2.txt\n./README.md',
+            stderr: ''
+        };
+    }
+    
+    // Default response for other safe commands
+    return {
+        success: true,
+        stdout: `[DEMO MODE] Command "${cmd}" executed successfully (simulated response)`,
+        stderr: ''
+    };
 }
 
 /**
@@ -48,6 +195,52 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
         });
     }
 
+    // Demo mode restrictions
+    if (isDemoMode()) {
+        // Check if command is explicitly forbidden in demo mode
+        for (const pattern of DEMO_FORBIDDEN_PATTERNS) {
+            if (pattern.test(cmd)) {
+                const message = `[DEMO MODE] Command blocked for security: ${cmd}`;
+                if (currentContext === 'telegram') {
+                    bot.sendMessage(process.env.CHAT_ID!, message);
+                } else {
+                    console.log(`[REPL] ${message}`);
+                }
+                return Promise.resolve({
+                    success: false,
+                    stdout: "",
+                    stderr: "Demo mode: Write operations and potentially dangerous commands are disabled for security."
+                });
+            }
+        }
+
+        // Check if command is safe to simulate
+        const isSafeCommand = DEMO_SAFE_COMMANDS.some(pattern => pattern.test(cmd));
+        if (isSafeCommand) {
+            const message = `[DEMO MODE] Simulating safe command: ${cmd}`;
+            if (currentContext === 'telegram') {
+                bot.sendMessage(process.env.CHAT_ID!, `🔒 ${message}`);
+            } else {
+                console.log(`[REPL] ${message}`);
+            }
+            return Promise.resolve(generateDemoResponse(cmd));
+        } else {
+            // Command not explicitly safe, block it
+            const message = `[DEMO MODE] Command not whitelisted: ${cmd}`;
+            if (currentContext === 'telegram') {
+                bot.sendMessage(process.env.CHAT_ID!, message);
+            } else {
+                console.log(`[REPL] ${message}`);
+            }
+            return Promise.resolve({
+                success: false,
+                stdout: "",
+                stderr: "Demo mode: Only safe, read-only commands are allowed. This command is not whitelisted."
+            });
+        }
+    }
+
+    // Original forbidden patterns for normal mode
     const forbiddenPatterns = [
         /\brm\s+-rf?\s+\/\s*--no-preserve-root\b/i,
         /\bdd\s+if=.*\s+of=\/dev\/(sda|nvme|hda)[0-9]*/i,
@@ -89,6 +282,20 @@ export async function watchDesktop(task: string) {
 
     if (process.env.ENABLE_WATCHER !== 'true') {
         return {success: false, message: 'Desktop watching is currently disabled.'}
+    }
+
+    // Demo mode: disable desktop watching for security
+    if (isDemoMode()) {
+        const message = '[DEMO MODE] Desktop watching is disabled for security reasons';
+        if (currentContext === 'telegram') {
+            bot.sendMessage(process.env.CHAT_ID!, message);
+        } else {
+            console.log(`[REPL] ${message}`);
+        }
+        return { 
+            success: false, 
+            message: 'Demo mode: Desktop watching is disabled for security. Task simulated as completed.' 
+        };
     }
 
     console.log(`Watching desktop at path: /tmp`);
@@ -315,6 +522,10 @@ export function setupTelegramBot() {
     if (process.env.ENABLE_TELEGRAM !== 'true') {
         return;
     }
+
+    // Enable polling for the bot
+    bot.setWebHook('');
+    bot.startPolling();
 
     bot.onText(/\/start/, (msg: any) => {
         bot.sendMessage(process.env.CHAT_ID!, 'Hey! I\'m your Gofer agent. What can I do for you?');

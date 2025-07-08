@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import repl from "repl";
 import { runTask } from "./ai";
-import { setContext, getContext } from "./gofer-logic";
+import { setContext } from "./gofer-logic";
 // @ts-ignore
 import { render, Text, Box } from 'ink';
 // @ts-ignore
@@ -86,7 +86,7 @@ async function launchRepl() {
     r.defineCommand('context', {
         help: 'Show current execution context',
         action() {
-            console.log(`Current context: ${getContext()}`);
+            console.log(`Current context: repl`);
             this.displayPrompt();
         }
     });
