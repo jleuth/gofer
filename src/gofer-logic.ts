@@ -4,15 +4,15 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from 'dotenv';
-import OpenAI from "openai";
+import { getRawProviderModel } from './providers';
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 import TelegramBot from 'node-telegram-bot-api';
+import { generateText } from 'ai';
 // @ts-ignore
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
-const openai = new OpenAI();
 
 // Create bot without polling initially - polling will be enabled in setupTelegramBot()
 const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: false });
@@ -344,39 +344,88 @@ export async function watchDesktop(task: string) {
             console.log(`Change percentage: ${changePercentage.toFixed(2)}%`);
 
             if (changePercentage > .5) {
-                const result = await openai.responses.create({
-                    model: process.env.WATCHER_MODEL,
-                    input: [
-                        {
-                            role: "user",
-                            content: [
-                                { type: "input_text", text: `Has the task been completed based on the desktop changes? The task is: ${task}. The start image is first, then the latest image. Reply with ONLY "yes" or "no" without any other text. ` },
-                                { type: "input_image", image_url: `data:image/png;base64,${startImageBase64}`, detail: "auto" },
-                                { type: "input_image", image_url: `data:image/png;base64,${latestImageBase64}`, detail: "auto" }
-                            ]
-                        }
-                    ]
-                });
-
-                console.log("AI analysis result:", result);
-
-                const finalResult = (result as any)?.final;
-                const completionKeywords = ["yes", "true", "completed", "finished", "done", "success", "ok"];
+                // Get the configured provider and model
+                const provider = process.env.GOFER_PROVIDER || 'openai';
+                const watcherModel = process.env.WATCHER_MODEL || process.env.GOFER_MODEL || 'gpt-4o-mini';
                 
-                if (typeof finalResult === 'string' && completionKeywords.some(keyword => 
-                    finalResult.toLowerCase().includes(keyword)
-                )) {
-                    console.log("Task completed! Stopping desktop watch.");
-                    inhibitor.kill();
-                    const message = `Gofer stopped watching the desktop for changes. The final screenshot is attached.`;
-                    if (currentContext === 'telegram') {
-                        bot.sendMessage(process.env.CHAT_ID!, message);
-                        bot.sendDocument(process.env.CHAT_ID!, `/tmp/latestImage.png`);
-                    } else {
-                        console.log(`[REPL] ${message}`);
-                        console.log(`[REPL] Screenshot saved to: /tmp/latestImage.png`);
+                try {
+                    const providerModel = getRawProviderModel(provider, watcherModel);
+                    
+                    const result = await generateText({
+                        model: providerModel,
+                        messages: [
+                            {
+                                role: "user",
+                                content: [
+                                    { type: "text", text: `Has the task been completed based on the desktop changes? The task is: ${task}. The start image is first, then the latest image. Reply with ONLY "yes" or "no" without any other text.` },
+                                    { type: "image", image: startImageBase64 },
+                                    { type: "image", image: latestImageBase64 }
+                                ]
+                            }
+                        ]
+                    });
+
+                    console.log("AI analysis result:", result);
+
+                    const finalResult = result.text;
+                    const completionKeywords = ["yes", "true", "completed", "finished", "done", "success", "ok"];
+                    
+                    if (typeof finalResult === 'string' && completionKeywords.some(keyword => 
+                        finalResult.toLowerCase().includes(keyword)
+                    )) {
+                        console.log("Task completed! Stopping desktop watch.");
+                        inhibitor.kill();
+                        const message = `Gofer stopped watching the desktop for changes. The final screenshot is attached.`;
+                        if (currentContext === 'telegram') {
+                            bot.sendMessage(process.env.CHAT_ID!, message);
+                            bot.sendDocument(process.env.CHAT_ID!, `/tmp/latestImage.png`);
+                        } else {
+                            console.log(`[REPL] ${message}`);
+                            console.log(`[REPL] Screenshot saved to: /tmp/latestImage.png`);
+                        }
+                        return { success: true, message: "Desktop task completed. Watcher said: " + finalResult };
                     }
-                    return { success: true, message: "Desktop task completed. Watcher said: " + finalResult };
+                } catch (providerError) {
+                    console.error("Provider failed, falling back to OpenAI:", providerError);
+                    
+                    // Fallback to OpenAI if provider fails
+                    const OpenAI = (await import('openai')).default;
+                    const fallbackOpenai = new OpenAI();
+                    
+                    const result = await fallbackOpenai.responses.create({
+                        model: watcherModel,
+                        input: [
+                            {
+                                role: "user",
+                                content: [
+                                    { type: "input_text", text: `Has the task been completed based on the desktop changes? The task is: ${task}. The start image is first, then the latest image. Reply with ONLY "yes" or "no" without any other text.` },
+                                    { type: "input_image", image_url: `data:image/png;base64,${startImageBase64}`, detail: "auto" },
+                                    { type: "input_image", image_url: `data:image/png;base64,${latestImageBase64}`, detail: "auto" }
+                                ]
+                            }
+                        ]
+                    });
+
+                    console.log("AI analysis result (fallback):", result);
+
+                    const finalResult = (result as any)?.final;
+                    const completionKeywords = ["yes", "true", "completed", "finished", "done", "success", "ok"];
+                    
+                    if (typeof finalResult === 'string' && completionKeywords.some(keyword => 
+                        finalResult.toLowerCase().includes(keyword)
+                    )) {
+                        console.log("Task completed! Stopping desktop watch.");
+                        inhibitor.kill();
+                        const message = `Gofer stopped watching the desktop for changes. The final screenshot is attached.`;
+                        if (currentContext === 'telegram') {
+                            bot.sendMessage(process.env.CHAT_ID!, message);
+                            bot.sendDocument(process.env.CHAT_ID!, `/tmp/latestImage.png`);
+                        } else {
+                            console.log(`[REPL] ${message}`);
+                            console.log(`[REPL] Screenshot saved to: /tmp/latestImage.png`);
+                        }
+                        return { success: true, message: "Desktop task completed. Watcher said: " + finalResult };
+                    }
                 }
             }
         } catch (error: any) {

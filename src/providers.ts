@@ -154,6 +154,44 @@ export function getProviderModel(providerName: string, modelName?: string) {
   return aisdk(providerInstance(model));
 }
 
+// New function for direct AI SDK usage (like in the watcher)
+export function getRawProviderModel(providerName: string, modelName?: string) {
+  const config = PROVIDERS[providerName];
+  if (!config) {
+    throw new Error(`Provider '${providerName}' not found`);
+  }
+
+  const model = modelName || config.defaultModel;
+  
+  // Check if API key is required and available
+  if (config.requiresApiKey) {
+    const apiKey = process.env[config.apiKeyEnvVar];
+    if (!apiKey) {
+      throw new Error(`${config.apiKeyEnvVar} environment variable is required for ${config.displayName}`);
+    }
+  }
+
+  let providerInstance;
+  
+  if (providerName === 'openrouter') {
+    // OpenRouter requires special initialization
+    const apiKey = process.env[config.apiKeyEnvVar];
+    if (!apiKey) {
+      throw new Error(`${config.apiKeyEnvVar} environment variable is required for ${config.displayName}`);
+    }
+    providerInstance = createOpenRouter({ apiKey });
+  } else if (providerName === 'ollama') {
+    // Ollama uses default localhost configuration
+    providerInstance = ollama;
+  } else {
+    // Standard AI SDK providers
+    providerInstance = config.provider;
+  }
+
+  // Return raw model without aisdk wrapper for direct AI SDK usage
+  return providerInstance(model);
+}
+
 export function listProviders(): Array<{ name: string; displayName: string; models: string[] }> {
   return Object.values(PROVIDERS).map(config => ({
     name: config.name,
