@@ -566,16 +566,29 @@ function isAuthorized(msg: any): { authorized: boolean; message?: string } {
     const text = msg.text || "";
     const words = text.trim().split(/\s+/);
     const secondWord = words[1] || '';
-    const isAuth = msg.chat.id.toString() === process.env.CHAT_ID && secondWord === process.env.PASSCODE;
     
-    if (!isAuth) {
-        return {
-            authorized: false,
-            message: "Please send your password. The format is /command <password> <prompt/other options>"
-        };
+    // Check if REVIEW_MODE is enabled
+    if (process.env.REVIEW_MODE === 'true') {
+        // In review mode, only require correct passcode (any chat ID allowed)
+        const isAuth = secondWord === process.env.PASSCODE;
+        if (!isAuth) {
+            return {
+                authorized: false,
+                message: "Please send your password. The format is /command <password> <prompt/other options>"
+            };
+        }
+        return { authorized: true };
+    } else {
+        // Normal mode: require both chat ID and passcode
+        const isAuth = msg.chat.id.toString() === process.env.CHAT_ID && secondWord === process.env.PASSCODE;
+        if (!isAuth) {
+            return {
+                authorized: false,
+                message: "Please send your password. The format is /command <password> <prompt/other options>"
+            };
+        }
+        return { authorized: true };
     }
-    
-    return { authorized: true };
 }
 
 export function setupTelegramBot() {
