@@ -10,6 +10,18 @@ import { PNG } from "pngjs";
 import TelegramBot from 'node-telegram-bot-api';
 import { generateText } from 'ai';
 // @ts-ignore
+import chalk from 'chalk';
+
+// Enhanced messaging utilities
+const messenger = {
+    repl: (msg: string) => console.log(chalk.blue(`[REPL] ${msg}`)),
+    telegram: (msg: string) => console.log(chalk.green(`[TELEGRAM] ${msg}`)),
+    demo: (msg: string) => console.log(chalk.yellow(`[DEMO] ${msg}`)),
+    error: (msg: string) => console.log(chalk.red(`[ERROR] ${msg}`)),
+    success: (msg: string) => console.log(chalk.green(`[SUCCESS] ${msg}`)),
+    warning: (msg: string) => console.log(chalk.yellow(`[WARNING] ${msg}`))
+};
+// @ts-ignore
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '../.env.local') });

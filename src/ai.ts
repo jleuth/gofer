@@ -6,6 +6,30 @@ import { z } from "zod";
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+// @ts-ignore
+import chalk from 'chalk';
+
+// Enhanced logging utilities
+const logger = {
+    tool: (name: string, args: any) => {
+        const argsStr = JSON.stringify(args, null, 2);
+        const truncatedArgs = argsStr.length > 100 ? argsStr.substring(0, 100) + '...' : argsStr;
+        console.log(chalk.blue(`🔧 ${name}`) + chalk.dim(`(${truncatedArgs})`));
+    },
+    success: (msg: string) => console.log(chalk.green(`✓ ${msg}`)),
+    error: (msg: string) => console.log(chalk.red(`✗ ${msg}`)),
+    info: (msg: string) => console.log(chalk.blue(`ℹ ${msg}`)),
+    result: (result: any) => {
+        if (typeof result === 'string') {
+            const truncated = result.length > 200 ? result.substring(0, 200) + '...' : result;
+            console.log(chalk.magenta(`📋 ${truncated}`));
+        } else {
+            const jsonStr = JSON.stringify(result, null, 2);
+            const truncated = jsonStr.length > 200 ? jsonStr.substring(0, 200) + '...' : jsonStr;
+            console.log(chalk.magenta(`📋 ${truncated}`));
+        }
+    }
+};
 
 // @ts-ignore
 const __filename = fileURLToPath(import.meta.url);
@@ -16,9 +40,9 @@ if (process.env.OPENAI_API_KEY) {
     setDefaultOpenAIKey(process.env.OPENAI_API_KEY);
 }
 
-console.log("Loading system prompts...");
+logger.info("Loading system prompts...");
 const systemPrompt = fs.readFileSync(path.join(__dirname, "./prompts/SYSTEM.md"), "utf-8");
-console.log("System prompts loaded");
+logger.success("System prompts loaded");
 
 export const commandTool = tool({
     name: "execute_command",
@@ -27,10 +51,20 @@ export const commandTool = tool({
         cmd: z.string()
     }),
     execute: async (input: { cmd: string }) => {
-        console.log("TOOL: execute_command called with:", input);
+        logger.tool("execute_command", { cmd: input.cmd });
         const result = await executeCommand(input.cmd);
         await writeToLog("command", { command: input.cmd, output: result.stdout, success: result.success }, result.success);
-        console.log("TOOL: execute_command result:", result);
+        
+        if (result.success) {
+            logger.success(`Command executed: ${input.cmd}`);
+        } else {
+            logger.error(`Command failed: ${input.cmd}`);
+        }
+        
+        if (result.stdout) {
+            logger.result(result.stdout);
+        }
+        
         return result;
     }
 });
@@ -41,10 +75,20 @@ export const riskyCommandTool = tool({
     parameters: z.object({ cmd: z.string() }),
     needsApproval: true,
     execute: async ({ cmd }) => {
-        console.log("TOOL: execute_risky_command called with:", cmd);
+        logger.tool("execute_risky_command", { cmd });
         const result = await executeCommand(cmd);
         await writeToLog("risky_command", { command: cmd, output: result.stdout, success: result.success }, result.success);
-        console.log("TOOL: execute_risky_command result:", result);
+        
+        if (result.success) {
+            logger.success(`Risky command executed: ${cmd}`);
+        } else {
+            logger.error(`Risky command failed: ${cmd}`);
+        }
+        
+        if (result.stdout) {
+            logger.result(result.stdout);
+        }
+        
         return result;
     }
 });
@@ -57,10 +101,17 @@ export const watchTool = tool({
         task: z.string()
     }),
     execute: async (input: { path: string, task: string }) => {
-        console.log("TOOL: watch_desktop called with:", input);
+        logger.tool("watch_desktop", { task: input.task });
         const result = await watchDesktop(input.task);
         await writeToLog("watch_desktop", { task: input.task, result }, true);
-        console.log("TOOL: watch_desktop result:", result);
+        
+        if (result.success) {
+            logger.success(`Desktop watch completed for: ${input.task}`);
+        } else {
+            logger.error(`Desktop watch failed for: ${input.task}`);
+        }
+        
+        logger.result(result);
         return result;
     }
 })
@@ -72,10 +123,11 @@ export const promptTool = tool({
         prompt: z.string()
     }),
     execute: async (input: { prompt: string }) => {
-        console.log("TOOL: prompt_user called with:", input);
+        logger.tool("prompt_user", { prompt: input.prompt });
         const result = await promptUser(input.prompt);
         await writeToLog("prompt_user", { prompt: input.prompt, response: result }, true);
-        console.log("TOOL: prompt_user result:", result);
+        logger.success("User responded to prompt");
+        logger.result(result);
         return result;
     }
 })
@@ -87,10 +139,10 @@ export const updateTool = tool({
         message: z.string()
     }),
     execute: async (input: { message: string }) => {
-        console.log("TOOL: update_user called with:", input);
+        logger.tool("update_user", { message: input.message });
         const result = await updateUser(input.message);
         await writeToLog("update_user", { message: input.message, result }, true);
-        console.log("TOOL: update_user result:", result);
+        logger.success("User updated");
         return result;
     }
 })
@@ -102,10 +154,10 @@ export const doneTool = tool({
         message: z.string()
     }),
     execute: async (input: { message: string }) => {
-        console.log("TOOL: done_with_task called with:", input);
+        logger.tool("done_with_task", { message: input.message });
         const result = await done(input.message);
         await writeToLog("done_with_task", { message: input.message, result }, true);
-        console.log("TOOL: done_with_task result:", result);
+        logger.success("Task completed!");
         return result;
     }
 })
@@ -115,10 +167,11 @@ export const listProvidersTool = tool({
     description: "List all available AI providers and their models",
     parameters: z.object({}),
     execute: async () => {
-        console.log("TOOL: list_providers called");
+        logger.tool("list_providers", {});
         const providers = listProviders();
         const result = { providers };
-        console.log("TOOL: list_providers result:", result);
+        logger.success("Providers listed");
+        logger.result(result);
         return result;
     }
 })
@@ -156,7 +209,7 @@ function createGoferAgent() {
 
 const gofer = createGoferAgent();
 
-console.log("Main Gofer agent created with all tools");
+logger.success("Main Gofer agent created with all tools");
 
 export async function runTask(taskInput: Task | string, source?: string) {
     const task: Task = typeof taskInput === "string"
@@ -170,7 +223,7 @@ export async function runTask(taskInput: Task | string, source?: string) {
         setContext('telegram');
     }
 
-    console.log("=== TASK START ===", task.prompt);
+    console.log(`\n${chalk.bold.green('=== TASK START ===')} ${chalk.cyan(task.prompt)}\n`);
 
     const runner = new Runner();
 
@@ -193,6 +246,10 @@ export async function runTask(taskInput: Task | string, source?: string) {
         result = await runner.run(gofer, result.state, { maxTurns: 30 });
     }
 
-    console.log("=== TASK COMPLETE ===", result.finalOutput);
+    console.log(`\n${chalk.bold.green('=== TASK COMPLETE ===')} ${chalk.green(result.finalOutput ? 'Success' : 'No output')}\n`);
+    
+    if (result.finalOutput) {
+        logger.result(result.finalOutput);
+    }
     return result;
 }

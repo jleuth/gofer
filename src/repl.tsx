@@ -8,6 +8,25 @@ import { render, Text, Box } from 'ink';
 import * as React from 'react';
 // @ts-ignore
 import chalk from 'chalk';
+
+// Enhanced console formatting utilities
+const formatters = {
+    success: (msg: string) => chalk.green(`✓ ${msg}`),
+    error: (msg: string) => chalk.red(`✗ ${msg}`),
+    info: (msg: string) => chalk.blue(`ℹ ${msg}`),
+    warning: (msg: string) => chalk.yellow(`⚠ ${msg}`),
+    task: (msg: string) => chalk.cyan(`${msg}`),
+    result: (msg: string) => chalk.magenta(`${msg}`),
+    truncate: (text: string, maxLength: number = 200) => {
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength) + chalk.dim('...');
+    },
+    toolCall: (name: string, args: any) => {
+        const argsStr = JSON.stringify(args, null, 2);
+        const truncatedArgs = formatters.truncate(argsStr, 100);
+        return chalk.blue(`${name}`) + chalk.dim(`(${truncatedArgs})`);
+    }
+};
 const program = new Command();
 
 
@@ -38,13 +57,17 @@ function Banner() {
     setContext('repl');
 
         return (
-            <Box flexDirection="column" padding={1} borderColor="orange" borderStyle="round">
+            <Box flexDirection="column" padding={1} borderColor="cyan" borderStyle="round">
                 <Text>
-                    {chalk.hex('#FFA500')('★ ')}
-                    {chalk.bold.white('Welcome to Gofer!')}
+                    {chalk.bold.cyan('Gofer AI Assistant')}
+                    {chalk.dim(' v1.0.0')}
                 </Text>
-                <Text dimColor>.help for help, write anything to run a task</Text>
-                <Text dimColor>{`cwd: ${process.cwd()}`}</Text>
+                <Text color="gray">
+                    {chalk.dim('┌─ ')} Type your task or {chalk.yellow('.help')} for commands
+                </Text>
+                <Text color="gray">
+                    {chalk.dim('└─ ')} Working directory: {chalk.blue(process.cwd())}
+                </Text>
             </Box>
         );
 }
@@ -58,7 +81,7 @@ async function launchRepl() {
     await new Promise(resolve => setTimeout(resolve, 1000)); // Sleep to bypass a race condition
     
     const r = repl.start({
-        prompt: "> ",
+        prompt: chalk.cyan('gofer> '),
         ignoreUndefined: true
     });
     
@@ -74,11 +97,18 @@ async function launchRepl() {
         
         // Treat as a task for the AI agent
         try {
-            console.log(`\n[REPL] Running task: ${trimmedInput}\n`);
+            console.log(`\n${formatters.task(`Starting task: ${formatters.truncate(trimmedInput, 80)}`)}\n`);
+            
             const result = await runTask(trimmedInput, "repl");
-            console.log(`\n[REPL] Task completed with result: ${result.finalOutput}\n`);
+            
+            if (result.finalOutput) {
+                console.log(`\n${formatters.success('Task completed successfully!')}`);
+                console.log(`${formatters.result(formatters.truncate(result.finalOutput, 300))}\n`);
+            } else {
+                console.log(`\n${formatters.warning('Task completed but no output received')}\n`);
+            }
         } catch (error) {
-            console.error(`\n[REPL] Error running task: ${error}\n`);
+            console.error(`\n${formatters.error(`Task failed: ${error}`)}\n`);
         }
     });
 
@@ -86,7 +116,9 @@ async function launchRepl() {
     r.defineCommand('context', {
         help: 'Show current execution context',
         action() {
-            console.log(`Current context: repl`);
+            console.log(`\n${formatters.info('Current execution context: repl')}`);
+            console.log(`${formatters.info(`Working directory: ${process.cwd()}`)}`);
+            console.log(`${formatters.info(`Node.js version: ${process.version}`)}\n`);
             this.displayPrompt();
         }
     });
@@ -94,22 +126,26 @@ async function launchRepl() {
     r.defineCommand('help', {
         help: 'Show help information',
         action() {
-            console.log('Gofer REPL Commands:');
-            console.log('  Type any task directly to run it');
-            console.log('  .context - Show current execution context');
-            console.log('  .help - Show this help message');
-            console.log('  .exit - Exit the REPL');
-            console.log('');
-            console.log('Examples:');
-            console.log('  gofer> list files in current directory');
-            console.log('  gofer> check system status');
-            console.log('  gofer> .context');
+            console.log(`\n${chalk.bold.cyan('Gofer AI Assistant Help')}`);
+            console.log(`${chalk.dim('═══════════════════════════════════════')}`);
+            console.log(`\n${chalk.bold('Commands:')}`);
+            console.log(`  ${chalk.yellow('.help')}     - Show this help message`);
+            console.log(`  ${chalk.yellow('.context')}  - Show current execution context`);
+            console.log(`  ${chalk.yellow('.exit')}     - Exit the REPL`);
+            console.log(`\n${chalk.bold('Usage:')}`);
+            console.log(`  ${chalk.green('Simply type your task in natural language')}`);
+            console.log(`\n${chalk.bold('Examples:')}`);
+            console.log(`  ${chalk.dim('>')} ${chalk.cyan('list files in current directory')}`);
+            console.log(`  ${chalk.dim('>')} ${chalk.cyan('check system status')}`);
+            console.log(`  ${chalk.dim('>')} ${chalk.cyan('create a new file called hello.txt')}`);
+            console.log(`  ${chalk.dim('>')} ${chalk.cyan('find all .js files in this project')}`);
+            console.log(`\n${chalk.dim('═══════════════════════════════════════')}\n`);
             this.displayPrompt();
         }
     });
 
     r.on('exit', () => {
-        console.log('Exiting Gofer CLI...');
+        console.log(`\n${chalk.cyan('Thanks for using Gofer!')} ${chalk.dim('Goodbye!')}`);        
         process.exit(0);
     });
 }
