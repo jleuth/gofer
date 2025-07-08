@@ -105,6 +105,24 @@ journalctl --user -u gofer -f
 - **Command Filtering**: Dangerous commands (rm -rf, dd, mkfs, passwd) are blocked
 - **Feature Toggles**: All major features can be disabled via environment variables
 - **Default Disabled**: Command execution is disabled by default for safety
+- **Review Mode**: For reviewers/testers - allows any chat ID with correct passcode
+
+## For Reviewers
+
+If you're reviewing or testing Gofer, you can use **Review Mode** to bypass the chat ID restriction:
+
+1. In your `.env.local` file, set:
+   ```
+   REVIEW_MODE=true
+   PASSCODE=YourReviewPassword
+   ```
+
+2. You can now use any Telegram chat with your bot using the format:
+   ```
+   /run YourReviewPassword <your task>
+   ```
+
+3. No need to configure a specific `CHAT_ID` - any chat that knows the passcode can interact with the bot.
 
 ## Development
 
