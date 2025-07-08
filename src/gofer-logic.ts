@@ -602,7 +602,12 @@ export function setupTelegramBot() {
     bot.startPolling();
 
     bot.onText(/\/start/, (msg: any) => {
-        bot.sendMessage(process.env.CHAT_ID!, 'Hey! I\'m your Gofer agent. What can I do for you?');
+        // In review mode, respond to any chat. In normal mode, only respond to authorized chat
+        if (process.env.REVIEW_MODE === 'true') {
+            bot.sendMessage(msg.chat.id, 'Hey! I\'m your Gofer agent. What can I do for you?');
+        } else if (msg.chat.id.toString() === process.env.CHAT_ID) {
+            bot.sendMessage(msg.chat.id, 'Hey! I\'m your Gofer agent. What can I do for you?');
+        }
     });
 
     bot.onText(/\/help/, (msg: any) => {
