@@ -61,9 +61,100 @@ var __filename = (0, url_1.fileURLToPath)(import.meta.url);
 var __dirname = path_1.default.dirname(__filename);
 dotenv_1.default.config({ path: path_1.default.join(__dirname, '../.env.local') });
 var openai = new openai_1.default();
-var bot = new node_telegram_bot_api_1.default(process.env.TELEGRAM_TOKEN, { polling: true });
+
+// Create bot without polling initially - polling will be enabled in setupTelegramBot()
+var bot = new node_telegram_bot_api_1.default(process.env.TELEGRAM_TOKEN, { polling: false });
+
 // Global context variable
 var currentContext = 'telegram';
+
+// Check if running in demo mode
+function isDemoMode() {
+    return process.env.DEMO_MODE === 'true';
+}
+
+// Demo-safe command patterns that are allowed
+var DEMO_SAFE_COMMANDS = [
+    /^ls\b/,
+    /^pwd$/,
+    /^whoami$/,
+    /^date$/,
+    /^echo\s+(?!.*\$)/,  // echo without variable expansion
+    /^cat\s+\/etc\/os-release$/,
+    /^uname\s+-a$/,
+    /^uptime$/,
+    /^df\s+-h$/,
+    /^free\s+-h$/,
+    /^ps\s+aux$/,
+    /^which\s+\w+$/,
+    /^find\s+.*-type\s+f.*-name.*$/,  // safe find commands
+    /^grep\s+.*$/,
+    /^head\s+.*$/,
+    /^tail\s+.*$/,
+    /^wc\s+.*$/,
+    /^sort\s+.*$/,
+    /^uniq\s+.*$/,
+];
+
+// Commands that involve writing or dangerous operations
+var DEMO_FORBIDDEN_PATTERNS = [
+    /\b(rm|rmdir|mv|cp|mkdir|touch|chmod|chown|sudo|su|passwd|useradd|userdel|groupadd|groupdel)\b/i,
+    /\b(apt|yum|dnf|pacman|pip|npm|yarn|cargo|go\s+install)\b/i,
+    /\b(systemctl|service|mount|umount|fdisk|parted|mkfs|dd)\b/i,
+    /\b(git\s+commit|git\s+push|git\s+clone|git\s+pull)\b/i,
+    />/,  // Any output redirection
+    /\|/,  // Pipes (could be used for writes)
+    /\$\{.*\}/,  // Variable expansion
+    /\$\(/,  // Command substitution
+    /`/,   // Backticks
+    /export\s+/i,  // Environment variable setting
+    /source\s+/i,  // Source files
+    /\./,  // Dot sourcing
+];
+
+// Generate demo-safe fake responses
+function generateDemoResponse(cmd) {
+    cmd = cmd.trim().toLowerCase();
+    
+    if (cmd === 'ls' || cmd.startsWith('ls ')) {
+        return {
+            success: true,
+            stdout: 'demo_file1.txt\ndemo_file2.txt\ndemo_folder/\nREADME.md\npackage.json',
+            stderr: ''
+        };
+    }
+    
+    if (cmd === 'pwd') {
+        return {
+            success: true,
+            stdout: '/home/demo-user/demo-workspace',
+            stderr: ''
+        };
+    }
+    
+    if (cmd === 'whoami') {
+        return {
+            success: true,
+            stdout: 'demo-user',
+            stderr: ''
+        };
+    }
+    
+    if (cmd === 'date') {
+        return {
+            success: true,
+            stdout: new Date().toString(),
+            stderr: ''
+        };
+    }
+    
+    // Default generic response for other safe commands
+    return {
+        success: true,
+        stdout: '[DEMO MODE] Command simulated successfully',
+        stderr: ''
+    };
+}
 // Function to set the current context
 function setContext(context) {
     currentContext = context;
@@ -87,6 +178,57 @@ function executeCommand(cmd) {
             });
         });
     }
+    
+    // Demo mode restrictions
+    if (isDemoMode()) {
+        // Check if command is explicitly forbidden in demo mode
+        for (var _i = 0, DEMO_FORBIDDEN_PATTERNS_1 = DEMO_FORBIDDEN_PATTERNS; _i < DEMO_FORBIDDEN_PATTERNS_1.length; _i++) {
+            var pattern = DEMO_FORBIDDEN_PATTERNS_1[_i];
+            if (pattern.test(cmd)) {
+                var message = "[DEMO MODE] Command blocked for security: ".concat(cmd);
+                if (currentContext === 'telegram') {
+                    bot.sendMessage(process.env.CHAT_ID, message);
+                }
+                else {
+                    console.log("[REPL] ".concat(message));
+                }
+                return Promise.resolve({
+                    success: false,
+                    stdout: "",
+                    stderr: "Demo mode: Write operations and potentially dangerous commands are disabled for security."
+                });
+            }
+        }
+
+        // Check if command is safe to simulate
+        var isSafeCommand = DEMO_SAFE_COMMANDS.some(function (pattern) { return pattern.test(cmd); });
+        if (isSafeCommand) {
+            var message = "[DEMO MODE] Simulating safe command: ".concat(cmd);
+            if (currentContext === 'telegram') {
+                bot.sendMessage(process.env.CHAT_ID, "\uD83D\uDD12 ".concat(message));
+            }
+            else {
+                console.log("[REPL] ".concat(message));
+            }
+            return Promise.resolve(generateDemoResponse(cmd));
+        } else {
+            // Command not explicitly safe, block it
+            var message = "[DEMO MODE] Command not whitelisted: ".concat(cmd);
+            if (currentContext === 'telegram') {
+                bot.sendMessage(process.env.CHAT_ID, message);
+            }
+            else {
+                console.log("[REPL] ".concat(message));
+            }
+            return Promise.resolve({
+                success: false,
+                stdout: "",
+                stderr: "Demo mode: Only safe, read-only commands are allowed. This command is not whitelisted."
+            });
+        }
+    }
+    
+    // Original forbidden patterns for normal mode
     var forbiddenPatterns = [
         /\brm\s+-rf?\s+\/\s*--no-preserve-root\b/i,
         /\bdd\s+if=.*\s+of=\/dev\/(sda|nvme|hda)[0-9]*/i,
@@ -131,6 +273,9 @@ function watchDesktop(task) {
                 case 0:
                     if (process.env.ENABLE_WATCHER !== 'true') {
                         return [2 /*return*/, { success: false, message: 'Desktop watching is currently disabled.' }];
+                    }
+                    if (isDemoMode()) {
+                        return [2 /*return*/, { success: false, message: 'Desktop watching is disabled in demo mode for security.' }];
                     }
                     console.log("Watching desktop at path: /tmp");
                     message = "Gofer started watching the desktop for changes";
@@ -200,7 +345,11 @@ function watchDesktop(task) {
                                         message_1 = "Gofer stopped watching the desktop for changes. The final screenshot is attached.";
                                         if (currentContext === 'telegram') {
                                             bot.sendMessage(process.env.CHAT_ID, message_1);
-                                            bot.sendDocument(process.env.CHAT_ID, "/tmp/latestImage.png");
+                                            if (fs_1.default.existsSync("/tmp/latestImage.png")) {
+                                                bot.sendDocument(process.env.CHAT_ID, "/tmp/latestImage.png").catch(function(err) {
+                                                    console.error('Error sending document:', err);
+                                                });
+                                            }
                                         }
                                         else {
                                             console.log("[REPL] ".concat(message_1));
@@ -363,20 +512,40 @@ function isAuthorized(msg) {
     var text = msg.text || "";
     var words = text.trim().split(/\s+/);
     var secondWord = words[1] || '';
-    var isAuth = msg.chat.id.toString() === process.env.CHAT_ID && secondWord === process.env.PASSCODE;
-    if (!isAuth) {
-        return {
-            authorized: false,
-            message: "Please send your password. The format is /command <password> <prompt/other options>"
-        };
+    
+    // Check if REVIEW_MODE is enabled
+    if (process.env.REVIEW_MODE === 'true') {
+        // In review mode, only require correct passcode (any chat ID allowed)
+        var isAuth = secondWord === process.env.PASSCODE;
+        if (!isAuth) {
+            return {
+                authorized: false,
+                message: "Please send your password. The format is /command <password> <prompt/other options>"
+            };
+        }
+        return { authorized: true };
+    } else {
+        // Normal mode: require both chat ID and passcode
+        var isAuth = msg.chat.id.toString() === process.env.CHAT_ID && secondWord === process.env.PASSCODE;
+        if (!isAuth) {
+            return {
+                authorized: false,
+                message: "Please send your password. The format is /command <password> <prompt/other options>"
+            };
+        }
+        return { authorized: true };
     }
-    return { authorized: true };
 }
 function setupTelegramBot() {
     var _this = this;
     if (process.env.ENABLE_TELEGRAM !== 'true') {
         return;
     }
+
+    // Enable polling for the bot
+    bot.setWebHook('');
+    bot.startPolling();
+
     bot.onText(/\/start/, function (msg) {
         bot.sendMessage(process.env.CHAT_ID, 'Hey! I\'m your Gofer agent. What can I do for you?');
     });
@@ -470,7 +639,14 @@ function setupTelegramBot() {
                     _a.sent();
                     process.env.NTBA_FIX_350 = 'true';
                     bot.sendMessage(process.env.CHAT_ID, 'Here is the screenshot:');
-                    bot.sendDocument(process.env.CHAT_ID, '/tmp/latestImage.png');
+                    if (fs_1.default.existsSync('/tmp/latestImage.png')) {
+                        bot.sendDocument(process.env.CHAT_ID, '/tmp/latestImage.png').catch(function(err) {
+                            console.error('Error sending document:', err);
+                            bot.sendMessage(process.env.CHAT_ID, 'Error sending screenshot file');
+                        });
+                    } else {
+                        bot.sendMessage(process.env.CHAT_ID, 'Error: Screenshot file not found');
+                    }
                     return [2 /*return*/];
             }
         });
@@ -491,7 +667,14 @@ function setupTelegramBot() {
                     _a.trys.push([1, 2, , 4]);
                     fs_1.default.statSync(prompt);
                     bot.sendMessage(process.env.CHAT_ID, 'Here is the file:');
-                    bot.sendDocument(process.env.CHAT_ID, prompt);
+                    if (fs_1.default.existsSync(prompt)) {
+                        bot.sendDocument(process.env.CHAT_ID, prompt).catch(function(err) {
+                            console.error('Error sending document:', err);
+                            bot.sendMessage(process.env.CHAT_ID, 'Error sending file');
+                        });
+                    } else {
+                        bot.sendMessage(process.env.CHAT_ID, 'Error: File not found');
+                    }
                     return [3 /*break*/, 4];
                 case 2:
                     error_2 = _a.sent();
@@ -499,7 +682,14 @@ function setupTelegramBot() {
                     return [4 /*yield*/, (0, ai_1.runTask)("The user is looking for the file \"".concat(prompt, "\". Use your command line tools to find the path. When calling to done_with_task, reply ONLY with the path, or else we won't be able to send the file. If you can't find the file, reply with \"not found\". Start by looking in common directories, like ~/Downloads, ~/Documents, ~/Desktop, etc."))];
                 case 3:
                     result = _a.sent();
-                    bot.sendDocument(process.env.CHAT_ID, result.finalOutput);
+                    if (result.finalOutput && result.finalOutput !== "not found" && fs_1.default.existsSync(result.finalOutput)) {
+                        bot.sendDocument(process.env.CHAT_ID, result.finalOutput).catch(function(err) {
+                            console.error('Error sending document:', err);
+                            bot.sendMessage(process.env.CHAT_ID, 'Error sending found file');
+                        });
+                    } else {
+                        bot.sendMessage(process.env.CHAT_ID, 'File not found or could not be located');
+                    }
                     console.log(result);
                     return [3 /*break*/, 4];
                 case 4: return [2 /*return*/];
