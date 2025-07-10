@@ -60,13 +60,80 @@ var node_telegram_bot_api_1 = require("node-telegram-bot-api");
 var __filename = (0, url_1.fileURLToPath)(import.meta.url);
 var __dirname = path_1.default.dirname(__filename);
 dotenv_1.default.config({ path: path_1.default.join(__dirname, '../.env.local') });
-var openai = new openai_1.default();
+var openai;
+try {
+    openai = new openai_1.default();
+} catch (error) {
+    console.error("Error initializing OpenAI client:", error);
+    openai = null;
+}
+
+// Global error handlers to prevent crashes
+process.on('uncaughtException', function(error) {
+    console.error('Uncaught Exception:', error);
+    console.error('Gofer will continue running, but this should be investigated.');
+});
+
+process.on('unhandledRejection', function(reason, promise) {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    console.error('Gofer will continue running, but this should be investigated.');
+});
 
 // Create bot without polling initially - polling will be enabled in setupTelegramBot()
-var bot = new node_telegram_bot_api_1.default(process.env.TELEGRAM_TOKEN, { polling: false });
+var bot;
+try {
+    if (!process.env.TELEGRAM_TOKEN) {
+        console.warn("Warning: TELEGRAM_TOKEN not set. Telegram functionality will be disabled.");
+        bot = null;
+    } else {
+        bot = new node_telegram_bot_api_1.default(process.env.TELEGRAM_TOKEN, { polling: false });
+    }
+} catch (error) {
+    console.error("Error initializing Telegram bot:", error);
+    bot = null;
+}
 
 // Global context variable
 var currentContext = 'telegram';
+
+// Helper function to safely send messages via Telegram bot
+function safeSendMessage(message) {
+    if (!bot || !process.env.CHAT_ID) {
+        console.log("[TELEGRAM UNAVAILABLE] " + message);
+        return Promise.resolve();
+    }
+    return bot.sendMessage(process.env.CHAT_ID, message).catch(function(error) {
+        console.error("Failed to send Telegram message:", error.message);
+    });
+}
+
+// Helper function to safely send documents via Telegram bot
+function safeSendDocument(filePath, caption) {
+    if (!bot || !process.env.CHAT_ID) {
+        console.log("[TELEGRAM UNAVAILABLE] Would send file: " + filePath);
+        return Promise.resolve();
+    }
+    if (!fs_1.default.existsSync(filePath)) {
+        console.error("File does not exist:", filePath);
+        return safeSendMessage("Error: File not found");
+    }
+    var options = caption ? { caption: caption } : {};
+    return bot.sendDocument(process.env.CHAT_ID, filePath, options).catch(function(error) {
+        console.error("Failed to send Telegram document:", error.message);
+        return safeSendMessage("Error sending file: " + error.message);
+    });
+}
+
+// Helper function to ensure tmp directory exists
+function ensureTmpDirectory() {
+    try {
+        if (!fs_1.default.existsSync('/tmp')) {
+            fs_1.default.mkdirSync('/tmp', { recursive: true });
+        }
+    } catch (error) {
+        console.error("Error ensuring /tmp directory exists:", error);
+    }
+}
 
 // Check if running in demo mode
 function isDemoMode() {
@@ -187,7 +254,7 @@ function executeCommand(cmd) {
             if (pattern.test(cmd)) {
                 var message = "[DEMO MODE] Command blocked for security: ".concat(cmd);
                 if (currentContext === 'telegram') {
-                    bot.sendMessage(process.env.CHAT_ID, message);
+                    safeSendMessage(message);
                 }
                 else {
                     console.log("[REPL] ".concat(message));
@@ -205,7 +272,7 @@ function executeCommand(cmd) {
         if (isSafeCommand) {
             var message = "[DEMO MODE] Simulating safe command: ".concat(cmd);
             if (currentContext === 'telegram') {
-                bot.sendMessage(process.env.CHAT_ID, "\uD83D\uDD12 ".concat(message));
+                safeSendMessage("\uD83D\uDD12 ".concat(message));
             }
             else {
                 console.log("[REPL] ".concat(message));
@@ -215,7 +282,7 @@ function executeCommand(cmd) {
             // Command not explicitly safe, block it
             var message = "[DEMO MODE] Command not whitelisted: ".concat(cmd);
             if (currentContext === 'telegram') {
-                bot.sendMessage(process.env.CHAT_ID, message);
+                safeSendMessage(message);
             }
             else {
                 console.log("[REPL] ".concat(message));
@@ -240,7 +307,7 @@ function executeCommand(cmd) {
         if (pattern.test(cmd)) {
             var message = "Gofer attempted to run a forbidden command: ".concat(cmd, ". Execution was blocked.");
             if (currentContext === 'telegram') {
-                bot.sendMessage(process.env.CHAT_ID, message);
+                safeSendMessage(message);
             }
             else {
                 console.log("[REPL] ".concat(message));
@@ -277,10 +344,11 @@ function watchDesktop(task) {
                     if (isDemoMode()) {
                         return [2 /*return*/, { success: false, message: 'Desktop watching is disabled in demo mode for security.' }];
                     }
+                    ensureTmpDirectory();
                     console.log("Watching desktop at path: /tmp");
                     message = "Gofer started watching the desktop for changes";
                     if (currentContext === 'telegram') {
-                        bot.sendMessage(process.env.CHAT_ID, message);
+                        safeSendMessage(message);
                     }
                     else {
                         console.log("[REPL] ".concat(message));
@@ -293,8 +361,23 @@ function watchDesktop(task) {
                     return [4 /*yield*/, executeCommand("spectacle -m -b -n -o /tmp/startImage.png")];
                 case 1:
                     _a.sent();
-                    startImage = pngjs_1.PNG.sync.read(fs_1.default.readFileSync("/tmp/startImage.png"));
-                    startImageBase64 = fs_1.default.readFileSync("/tmp/startImage.png", 'base64');
+                    try {
+                        if (!fs_1.default.existsSync("/tmp/startImage.png")) {
+                            throw new Error("Start screenshot file not found");
+                        }
+                        startImage = pngjs_1.PNG.sync.read(fs_1.default.readFileSync("/tmp/startImage.png"));
+                        startImageBase64 = fs_1.default.readFileSync("/tmp/startImage.png", 'base64');
+                    } catch (error) {
+                        console.error("Error reading start image:", error);
+                        inhibitor.kill();
+                        var errorMessage = "Failed to capture or read start screenshot";
+                        if (currentContext === 'telegram') {
+                            safeSendMessage(errorMessage);
+                        } else {
+                            console.log("[REPL] ".concat(errorMessage));
+                        }
+                        return [2 /*return*/, { success: false, message: errorMessage }];
+                    }
                     _loop_1 = function () {
                         var latestImage, latestImageBase64, width, height, diff, pixelDiff, changePercentage, result, finalResult_1, completionKeywords, message_1, error_1, message_2;
                         return __generator(this, function (_b) {
@@ -307,8 +390,17 @@ function watchDesktop(task) {
                                     return [4 /*yield*/, executeCommand("spectacle -m -b -n -o /tmp/latestImage.png")];
                                 case 2:
                                     _b.sent();
-                                    latestImage = pngjs_1.PNG.sync.read(fs_1.default.readFileSync("/tmp/latestImage.png"));
-                                    latestImageBase64 = fs_1.default.readFileSync("/tmp/latestImage.png", 'base64');
+                                    try {
+                                        if (!fs_1.default.existsSync("/tmp/latestImage.png")) {
+                                            console.error("Latest screenshot file not found. Skipping this frame.");
+                                            return [2 /*return*/, "continue"];
+                                        }
+                                        latestImage = pngjs_1.PNG.sync.read(fs_1.default.readFileSync("/tmp/latestImage.png"));
+                                        latestImageBase64 = fs_1.default.readFileSync("/tmp/latestImage.png", 'base64');
+                                    } catch (imageError) {
+                                        console.error("Error reading latest image:", imageError);
+                                        return [2 /*return*/, "continue"];
+                                    }
                                     width = startImage.width, height = startImage.height;
                                     if (latestImage.width !== width || latestImage.height !== height) {
                                         console.error("Screenshot dimensions mismatch. Skipping analysis for this frame.");
@@ -344,12 +436,8 @@ function watchDesktop(task) {
                                         inhibitor.kill();
                                         message_1 = "Gofer stopped watching the desktop for changes. The final screenshot is attached.";
                                         if (currentContext === 'telegram') {
-                                            bot.sendMessage(process.env.CHAT_ID, message_1);
-                                            if (fs_1.default.existsSync("/tmp/latestImage.png")) {
-                                                bot.sendDocument(process.env.CHAT_ID, "/tmp/latestImage.png").catch(function(err) {
-                                                    console.error('Error sending document:', err);
-                                                });
-                                            }
+                                            safeSendMessage(message_1);
+                                            safeSendDocument("/tmp/latestImage.png");
                                         }
                                         else {
                                             console.log("[REPL] ".concat(message_1));
@@ -365,7 +453,7 @@ function watchDesktop(task) {
                                     inhibitor.kill();
                                     message_2 = "An error caused Gofer to stop watching the desktop for changes";
                                     if (currentContext === 'telegram') {
-                                        bot.sendMessage(process.env.CHAT_ID, message_2);
+                                        safeSendMessage(message_2);
                                     }
                                     else {
                                         console.log("[REPL] ".concat(message_2));
@@ -397,12 +485,16 @@ function promptUser(prompt) {
         var readline, rl_1;
         return __generator(this, function (_a) {
             if (currentContext === 'telegram') {
-                bot.sendMessage(process.env.CHAT_ID, "Gofer asked: ".concat(prompt));
+                safeSendMessage("Gofer asked: ".concat(prompt));
                 return [2 /*return*/, new Promise(function (resolve) {
+                        if (!bot || !process.env.CHAT_ID) {
+                            resolve({ success: false, response: "Telegram not available" });
+                            return;
+                        }
                         var messageHandler = function (msg) {
                             if (msg.chat.id.toString() === process.env.CHAT_ID) {
                                 bot.removeListener('message', messageHandler);
-                                resolve({ success: true, response: msg.text });
+                                resolve({ success: true, response: msg.text || "" });
                             }
                         };
                         bot.on('message', messageHandler);
@@ -433,7 +525,7 @@ function updateUser(message) {
     return __awaiter(this, void 0, void 0, function () {
         return __generator(this, function (_a) {
             if (currentContext === 'telegram') {
-                bot.sendMessage(process.env.CHAT_ID, "Gofer sent an update: ".concat(message));
+                safeSendMessage("Gofer sent an update: ".concat(message));
             }
             else {
                 console.log("[REPL] Gofer update: ".concat(message));
@@ -449,7 +541,7 @@ function done(message) {
     return __awaiter(this, void 0, void 0, function () {
         return __generator(this, function (_a) {
             if (currentContext === 'telegram') {
-                bot.sendMessage(process.env.CHAT_ID, "Task completed: ".concat(message));
+                safeSendMessage("Task completed: ".concat(message));
             }
             else {
                 console.log("[REPL] Task completed: ".concat(message));
@@ -465,8 +557,16 @@ function getLog() {
     return __awaiter(this, void 0, void 0, function () {
         var logPath;
         return __generator(this, function (_a) {
-            logPath = path_1.default.join(__dirname, "log.json");
-            return [2 /*return*/, fs_1.default.readFileSync(logPath, "utf-8")];
+            try {
+                logPath = path_1.default.join(__dirname, "log.json");
+                if (!fs_1.default.existsSync(logPath)) {
+                    return [2 /*return*/, "[]"];
+                }
+                return [2 /*return*/, fs_1.default.readFileSync(logPath, "utf-8")];
+            } catch (error) {
+                console.error("Error reading log file:", error);
+                return [2 /*return*/, "[]"];
+            }
         });
     });
 }
@@ -509,31 +609,46 @@ function writeToLog(type, data, success) {
     });
 }
 function isAuthorized(msg) {
-    var text = msg.text || "";
-    var words = text.trim().split(/\s+/);
-    var secondWord = words[1] || '';
-    
-    // Check if REVIEW_MODE is enabled
-    if (process.env.REVIEW_MODE === 'true') {
-        // In review mode, only require correct passcode (any chat ID allowed)
-        var isAuth = secondWord === process.env.PASSCODE;
-        if (!isAuth) {
+    try {
+        if (!msg || !msg.text || !msg.chat || !msg.chat.id) {
             return {
                 authorized: false,
-                message: "Please send your password. The format is /command <password> <prompt/other options>"
+                message: "Invalid message format"
             };
         }
-        return { authorized: true };
-    } else {
-        // Normal mode: require both chat ID and passcode
-        var isAuth = msg.chat.id.toString() === process.env.CHAT_ID && secondWord === process.env.PASSCODE;
-        if (!isAuth) {
-            return {
-                authorized: false,
-                message: "Please send your password. The format is /command <password> <prompt/other options>"
-            };
+        
+        var text = msg.text || "";
+        var words = text.trim().split(/\s+/);
+        var secondWord = words[1] || '';
+        
+        // Check if REVIEW_MODE is enabled
+        if (process.env.REVIEW_MODE === 'true') {
+            // In review mode, only require correct passcode (any chat ID allowed)
+            var isAuth = secondWord === process.env.PASSCODE;
+            if (!isAuth) {
+                return {
+                    authorized: false,
+                    message: "Please send your password. The format is /command <password> <prompt/other options>"
+                };
+            }
+            return { authorized: true };
+        } else {
+            // Normal mode: require both chat ID and passcode
+            var isAuth = msg.chat.id.toString() === process.env.CHAT_ID && secondWord === process.env.PASSCODE;
+            if (!isAuth) {
+                return {
+                    authorized: false,
+                    message: "Please send your password. The format is /command <password> <prompt/other options>"
+                };
+            }
+            return { authorized: true };
         }
-        return { authorized: true };
+    } catch (error) {
+        console.error("Error in isAuthorized:", error);
+        return {
+            authorized: false,
+            message: "Authorization check failed"
+        };
     }
 }
 function setupTelegramBot() {
@@ -541,13 +656,27 @@ function setupTelegramBot() {
     if (process.env.ENABLE_TELEGRAM !== 'true') {
         return;
     }
+    
+    if (!bot) {
+        console.error("Cannot setup Telegram bot: bot not initialized");
+        return;
+    }
 
-    // Enable polling for the bot
-    bot.setWebHook('');
-    bot.startPolling();
+    try {
+        // Enable polling for the bot
+        bot.setWebHook('');
+        bot.startPolling();
+    } catch (error) {
+        console.error("Error starting Telegram bot:", error);
+        return;
+    }
 
     bot.onText(/\/start/, function (msg) {
-        bot.sendMessage(process.env.CHAT_ID, 'Hey! I\'m your Gofer agent. What can I do for you?');
+        try {
+            safeSendMessage('Hey! I\'m your Gofer agent. What can I do for you?');
+        } catch (error) {
+            console.error('Error in /start handler:', error);
+        }
     });
     bot.onText(/\/help/, function (msg) {
         var auth = isAuthorized(msg);
