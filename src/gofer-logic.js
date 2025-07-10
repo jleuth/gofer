@@ -702,9 +702,23 @@ function setupTelegramBot() {
             bot.sendMessage(process.env.CHAT_ID, auth.message);
             return;
         }
-        var taskPrompt = match && match[1] ? match[1].trim() : '';
+        var fullText = match && match[1] ? match[1].trim() : '';
+        if (!fullText) {
+            safeSendMessage('Please provide a task after /run. Example: /run <passcode> build the project');
+            return;
+        }
+        
+        // Extract task prompt after the passcode
+        var words = fullText.split(/\s+/);
+        if (words.length < 2) {
+            safeSendMessage('Please provide a task after the passcode. Example: /run <passcode> build the project');
+            return;
+        }
+        
+        // Skip the first word (passcode) and join the rest as the task
+        var taskPrompt = words.slice(1).join(' ');
         if (!taskPrompt) {
-            bot.sendMessage(process.env.CHAT_ID, 'Please provide a task after /run. Example: /run <passcode> build the project');
+            safeSendMessage('Please provide a task after the passcode. Example: /run <passcode> build the project');
             return;
         }
         setContext('telegram');
@@ -717,9 +731,23 @@ function setupTelegramBot() {
             bot.sendMessage(process.env.CHAT_ID, auth.message);
             return;
         }
-        var followupPrompt = match && match[1] ? match[1].trim() : '';
+        var fullText = match && match[1] ? match[1].trim() : '';
+        if (!fullText) {
+            safeSendMessage('Please provide a followup task. Example: /followup <passcode> continue the previous task');
+            return;
+        }
+        
+        // Extract followup prompt after the passcode
+        var words = fullText.split(/\s+/);
+        if (words.length < 2) {
+            safeSendMessage('Please provide a followup task after the passcode. Example: /followup <passcode> continue the previous task');
+            return;
+        }
+        
+        // Skip the first word (passcode) and join the rest as the task
+        var followupPrompt = words.slice(1).join(' ');
         if (!followupPrompt) {
-            bot.sendMessage(process.env.CHAT_ID, 'Please provide a followup task. Example: /followup <passcode> continue the previous task');
+            safeSendMessage('Please provide a followup task after the passcode. Example: /followup <passcode> continue the previous task');
             return;
         }
         setContext('telegram');
@@ -787,10 +815,16 @@ function setupTelegramBot() {
                 case 0:
                     auth = isAuthorized(msg);
                     if (!auth.authorized) {
-                        bot.sendMessage(process.env.CHAT_ID, auth.message);
+                        safeSendMessage(auth.message);
                         return [2 /*return*/];
                     }
-                    prompt = msg.text.split(' ').slice(1).join(' ');
+                    // Extract file path after the passcode
+                    var words = msg.text.split(' ');
+                    if (words.length < 3) {
+                        safeSendMessage('Please provide a file path after the passcode. Example: /getfile <passcode> /path/to/file');
+                        return [2 /*return*/];
+                    }
+                    prompt = words.slice(2).join(' '); // Skip command and passcode
                     _a.label = 1;
                 case 1:
                     _a.trys.push([1, 2, , 4]);
