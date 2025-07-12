@@ -150,5 +150,9 @@ out/
 # Command log
 src/log.json
 
+# Prevent stale compiled JS files in src (should only be in dist/)
+src/*.js
+
 # .claude
 .claude/
+CLAUDE.md
