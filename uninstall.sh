@@ -87,7 +87,7 @@ uninstall_gofer() {
         log_warn "REPL wrapper not found: $REPL_BINARY"
     fi
     
-    log_info "✔ Gofer has been completely uninstalled"
+    log_info "Gofer has been completely uninstalled"
 }
 
 # Check if anything is installed

@@ -72,7 +72,7 @@ For successful execution:
 Command: [command]
 Summary: [intelligent 1-2 line summary of what happened]
 Key info: [essential details only]
-Status: ✓ Success
+Status: Success
 ```
 
 For failed execution:
@@ -81,7 +81,7 @@ Command: [command]
 Error: [concise error description]
 Cause: [your analysis]
 Fix: [specific solution]
-Status: ✗ Failed
+Status: Failed
 ```
 
 **Examples of good summarization:**

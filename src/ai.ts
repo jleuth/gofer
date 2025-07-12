@@ -1,7 +1,7 @@
 import { Agent, tool, Runner, setDefaultOpenAIKey } from "@openai/agents";
-import { Task } from "@/types";
-import { executeCommand, watchDesktop, promptUser, updateUser, done, getLog, writeToLog, setContext } from "@/gofer-logic";
-import { getProviderModel, listProviders } from "@/providers";
+import { Task } from "./types.js";
+import { executeCommand, watchDesktop, promptUser, updateUser, done, getLog, writeToLog, setContext } from "./gofer-logic.js";
+import { getProviderModel, listProviders } from "./providers.js";
 import { z } from "zod";
 import * as fs from 'fs';
 import * as path from 'path';
@@ -14,19 +14,19 @@ const logger = {
     tool: (name: string, args: any) => {
         const argsStr = JSON.stringify(args, null, 2);
         const truncatedArgs = argsStr.length > 100 ? argsStr.substring(0, 100) + '...' : argsStr;
-        console.log(chalk.blue(`🔧 ${name}`) + chalk.dim(`(${truncatedArgs})`));
+        console.log(chalk.blue(`[TOOL] ${name}`) + chalk.dim(`(${truncatedArgs})`));
     },
-    success: (msg: string) => console.log(chalk.green(`✓ ${msg}`)),
-    error: (msg: string) => console.log(chalk.red(`✗ ${msg}`)),
-    info: (msg: string) => console.log(chalk.blue(`ℹ ${msg}`)),
+    success: (msg: string) => console.log(chalk.green(`[SUCCESS] ${msg}`)),
+    error: (msg: string) => console.log(chalk.red(`[ERROR] ${msg}`)),
+    info: (msg: string) => console.log(chalk.blue(`[INFO] ${msg}`)),
     result: (result: any) => {
         if (typeof result === 'string') {
             const truncated = result.length > 200 ? result.substring(0, 200) + '...' : result;
-            console.log(chalk.magenta(`📋 ${truncated}`));
+            console.log(chalk.magenta(`[RESULT] ${truncated}`));
         } else {
             const jsonStr = JSON.stringify(result, null, 2);
             const truncated = jsonStr.length > 200 ? jsonStr.substring(0, 200) + '...' : jsonStr;
-            console.log(chalk.magenta(`📋 ${truncated}`));
+            console.log(chalk.magenta(`[RESULT] ${truncated}`));
         }
     }
 };

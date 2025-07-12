@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import repl from "repl";
-import { runTask } from "./ai";
-import { setContext } from "./gofer-logic";
+import { runTask } from "./ai.js";
+import { setContext } from "./gofer-logic.js";
 // @ts-ignore
 import { render, Text, Box } from 'ink';
 // @ts-ignore
@@ -11,10 +11,10 @@ import chalk from 'chalk';
 
 // Enhanced console formatting utilities
 const formatters = {
-    success: (msg: string) => chalk.green(`✓ ${msg}`),
-    error: (msg: string) => chalk.red(`✗ ${msg}`),
-    info: (msg: string) => chalk.blue(`ℹ ${msg}`),
-    warning: (msg: string) => chalk.yellow(`⚠ ${msg}`),
+    success: (msg: string) => chalk.green(`[SUCCESS] ${msg}`),
+    error: (msg: string) => chalk.red(`[ERROR] ${msg}`),
+    info: (msg: string) => chalk.blue(`[INFO] ${msg}`),
+    warning: (msg: string) => chalk.yellow(`[WARNING] ${msg}`),
     task: (msg: string) => chalk.cyan(`${msg}`),
     result: (msg: string) => chalk.magenta(`${msg}`),
     truncate: (text: string, maxLength: number = 200) => {

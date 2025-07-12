@@ -1,10 +1,10 @@
-import { runTask } from "@/ai";
+import { runTask } from "./ai.js";
 import { exec, spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from 'dotenv';
-import { getRawProviderModel } from './providers';
+import { getRawProviderModel } from './providers.js';
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 import TelegramBot from 'node-telegram-bot-api';
@@ -24,25 +24,205 @@ function getTargetChatId(): string | null {
     }
 }
 
-// Helper function to safely send Telegram messages
-function safeSendMessage(bot: TelegramBot, message: string): void {
-    const chatId = getTargetChatId();
-    if (chatId) {
-        bot.sendMessage(chatId, message).catch((error) => {
-            console.error('Failed to send Telegram message:', error.message);
-        });
+// Centralized Telegram bot management
+class TelegramBotManager {
+    private bot: TelegramBot | null = null;
+    private isInitialized = false;
+    private messageHandlers: Map<string, (msg: any) => void> = new Map();
+    private healthCheckInterval: NodeJS.Timeout | null = null;
+
+    async initializeBot(): Promise<boolean> {
+        if (this.isInitialized && this.bot) {
+            return true;
+        }
+
+        try {
+            if (!process.env.TELEGRAM_TOKEN) {
+                console.warn("Warning: TELEGRAM_TOKEN not set. Telegram functionality will be disabled.");
+                return false;
+            }
+
+            this.bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: false });
+            
+            // Add global error handlers
+            this.bot.on('polling_error', (error) => {
+                console.error('Telegram polling error:', error);
+                this.handleBotError(error);
+            });
+
+            this.bot.on('webhook_error', (error) => {
+                console.error('Telegram webhook error:', error);
+                this.handleBotError(error);
+            });
+
+            this.isInitialized = true;
+            console.log("Telegram bot initialized successfully");
+            return true;
+        } catch (error) {
+            console.error("Error initializing Telegram bot:", error);
+            this.bot = null;
+            this.isInitialized = false;
+            return false;
+        }
+    }
+
+    async startPolling(): Promise<boolean> {
+        if (!this.bot || !this.isInitialized) {
+            return false;
+        }
+
+        try {
+            await this.bot.setWebHook('');
+            this.bot.startPolling();
+            
+            // Start health check
+            this.startHealthCheck();
+            
+            console.log("Telegram bot polling started successfully");
+            return true;
+        } catch (error) {
+            console.error("Error starting Telegram bot polling:", error);
+            return false;
+        }
+    }
+
+    stopPolling(): void {
+        if (this.bot) {
+            try {
+                this.bot.stopPolling();
+                console.log("Telegram bot polling stopped");
+            } catch (error) {
+                console.error("Error stopping bot polling:", error);
+            }
+        }
+        
+        if (this.healthCheckInterval) {
+            clearInterval(this.healthCheckInterval);
+            this.healthCheckInterval = null;
+        }
+    }
+
+    private startHealthCheck(): void {
+        if (this.healthCheckInterval) {
+            clearInterval(this.healthCheckInterval);
+        }
+
+        this.healthCheckInterval = setInterval(async () => {
+            if (this.bot) {
+                try {
+                    await this.bot.getMe();
+                } catch (error) {
+                    console.error('Bot health check failed:', error);
+                    this.handleBotError(error);
+                }
+            }
+        }, 60000); // Check every minute
+    }
+
+    private handleBotError(error: any): void {
+        console.error('Bot encountered error:', error);
+        
+        // For certain errors, attempt to restart polling
+        if (error.code === 'ETELEGRAM' || error.code === 'ECONNRESET') {
+            console.log('Attempting to restart bot polling...');
+            setTimeout(() => {
+                this.restartPolling();
+            }, 5000);
+        }
+    }
+
+    private async restartPolling(): Promise<void> {
+        try {
+            this.stopPolling();
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            await this.startPolling();
+        } catch (error) {
+            console.error('Failed to restart bot polling:', error);
+        }
+    }
+
+    getBot(): TelegramBot | null {
+        return this.bot;
+    }
+
+    isReady(): boolean {
+        return this.isInitialized && this.bot !== null;
+    }
+
+    // Enhanced message sending with retry logic
+    async safeSendMessage(message: string, retries = 3): Promise<boolean> {
+        const chatId = getTargetChatId();
+        if (!this.bot || !chatId) {
+            console.log("[TELEGRAM UNAVAILABLE]", message);
+            return false;
+        }
+
+        for (let attempt = 0; attempt < retries; attempt++) {
+            try {
+                await this.bot.sendMessage(chatId, message);
+                return true;
+            } catch (error: any) {
+                console.error(`Failed to send Telegram message (attempt ${attempt + 1}/${retries}):`, error.message);
+                if (attempt === retries - 1) {
+                    return false;
+                }
+                // Wait before retry
+                await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+            }
+        }
+        return false;
+    }
+
+    // Enhanced document sending with retry logic
+    async safeSendDocument(filePath: string, caption?: string, retries = 3): Promise<boolean> {
+        const chatId = getTargetChatId();
+        if (!this.bot || !chatId) {
+            console.log("[TELEGRAM UNAVAILABLE] Would send file:", filePath);
+            return false;
+        }
+
+        if (!fs.existsSync(filePath)) {
+            console.error("File does not exist:", filePath);
+            await this.safeSendMessage("Error: File not found");
+            return false;
+        }
+
+        for (let attempt = 0; attempt < retries; attempt++) {
+            try {
+                const options = caption ? { caption } : {};
+                await this.bot.sendDocument(chatId, filePath, options);
+                return true;
+            } catch (error: any) {
+                console.error(`Failed to send Telegram document (attempt ${attempt + 1}/${retries}):`, error.message);
+                if (attempt === retries - 1) {
+                    await this.safeSendMessage(`Error sending file: ${error.message}`);
+                    return false;
+                }
+                // Wait before retry
+                await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+            }
+        }
+        return false;
+    }
+
+    cleanup(): void {
+        this.stopPolling();
+        this.messageHandlers.clear();
+        this.bot = null;
+        this.isInitialized = false;
     }
 }
 
-// Helper function to safely send Telegram documents
-function safeSendDocument(bot: TelegramBot, filePath: string, caption?: string): void {
-    const chatId = getTargetChatId();
-    if (chatId) {
-        const options = caption ? { caption } : {};
-        bot.sendDocument(chatId, filePath, options).catch((error) => {
-            console.error('Failed to send Telegram document:', error.message);
-        });
-    }
+// Global bot manager instance
+const telegramManager = new TelegramBotManager();
+
+// Legacy compatibility functions
+function safeSendMessage(botParam: TelegramBot | null, message: string): void {
+    telegramManager.safeSendMessage(message);
+}
+
+function safeSendDocument(botParam: TelegramBot | null, filePath: string, caption?: string): void {
+    telegramManager.safeSendDocument(filePath, caption);
 }
 
 // Enhanced messaging utilities
@@ -59,8 +239,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
 
-// Create bot without polling initially - polling will be enabled in setupTelegramBot()
-const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: false });
+// Telegram bot instance with proper error handling
+let bot: TelegramBot | null = null;
+let botInitialized = false;
 
 // Track the current execution context
 let currentContext: 'telegram' | 'repl' = 'repl';
@@ -264,7 +445,7 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
         if (isSafeCommand) {
             const message = `[DEMO MODE] Simulating safe command: ${cmd}`;
             if (currentContext === 'telegram') {
-                safeSendMessage(bot, `🔒 ${message}`);
+                safeSendMessage(bot, `[DEMO] ${message}`);
             } else {
                 console.log(`[REPL] ${message}`);
             }
@@ -273,7 +454,7 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
             // Command not explicitly safe, block it
             const message = `[DEMO MODE] Command not whitelisted: ${cmd}`;
             if (currentContext === 'telegram') {
-                bot.sendMessage(process.env.CHAT_ID!, message);
+                telegramManager.safeSendMessage(message);
             } else {
                 console.log(`[REPL] ${message}`);
             }
@@ -297,7 +478,7 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
         if (pattern.test(cmd)) {
             const message = `Gofer attempted to run a forbidden command: ${cmd}. Execution was blocked.`;
             if (currentContext === 'telegram') {
-                bot.sendMessage(process.env.CHAT_ID!, message);
+                telegramManager.safeSendMessage(message);
             } else {
                 console.log(`[REPL] ${message}`);
             }
@@ -320,11 +501,58 @@ export function executeCommand(cmd: string): Promise<{ success: boolean, stdout:
     });
 }
 
+// Desktop watching configuration
+interface WatcherConfig {
+    maxDuration: number;        // Maximum watch duration in ms (default: 30 minutes)
+    baseInterval: number;       // Base interval between checks in ms (default: 30 seconds)  
+    maxInterval: number;        // Maximum interval with backoff in ms (default: 5 minutes)
+    changeThreshold: number;    // Pixel change threshold (default: 0.5%)
+    maxRetries: number;         // Maximum retries for failed operations (default: 3)
+}
+
+const DEFAULT_WATCHER_CONFIG: WatcherConfig = {
+    maxDuration: 30 * 60 * 1000,    // 30 minutes
+    baseInterval: 30 * 1000,        // 30 seconds
+    maxInterval: 5 * 60 * 1000,     // 5 minutes
+    changeThreshold: 0.5,           // 0.5%
+    maxRetries: 3
+};
+
+// Resource cleanup utility
+class DesktopWatcherCleanup {
+    private resources: Array<() => void> = [];
+    private isCleanedUp = false;
+
+    addResource(cleanup: () => void) {
+        if (!this.isCleanedUp) {
+            this.resources.push(cleanup);
+        }
+    }
+
+    cleanup() {
+        if (this.isCleanedUp) return;
+        this.isCleanedUp = true;
+        
+        for (const cleanup of this.resources) {
+            try {
+                cleanup();
+            } catch (error) {
+                console.error('Error during cleanup:', error);
+            }
+        }
+        this.resources = [];
+    }
+
+    isCleaned(): boolean {
+        return this.isCleanedUp;
+    }
+}
+
 /**
- * Watches the desktop for changes and uses OpenAI to determine if a task is complete.
+ * Watches the desktop for changes and uses AI to determine if a task is complete.
+ * Includes proper resource management, timeouts, and graceful error handling.
  */
 export async function watchDesktop(task: string) {
-
     if (process.env.ENABLE_WATCHER !== 'true') {
         return {success: false, message: 'Desktop watching is currently disabled.'}
     }
@@ -333,7 +561,7 @@ export async function watchDesktop(task: string) {
     if (isDemoMode()) {
         const message = '[DEMO MODE] Desktop watching is disabled for security reasons';
         if (currentContext === 'telegram') {
-            bot.sendMessage(process.env.CHAT_ID!, message);
+            safeSendMessage(bot, message);
         } else {
             console.log(`[REPL] ${message}`);
         }
@@ -343,146 +571,318 @@ export async function watchDesktop(task: string) {
         };
     }
 
-    console.log(`Watching desktop at path: /tmp`);
+    // Load configuration
+    const config: WatcherConfig = {
+        maxDuration: parseInt(process.env.WATCHER_MAX_DURATION || '') || DEFAULT_WATCHER_CONFIG.maxDuration,
+        baseInterval: parseInt(process.env.WATCHER_BASE_INTERVAL || '') || DEFAULT_WATCHER_CONFIG.baseInterval,
+        maxInterval: parseInt(process.env.WATCHER_MAX_INTERVAL || '') || DEFAULT_WATCHER_CONFIG.maxInterval,
+        changeThreshold: parseFloat(process.env.WATCHER_CHANGE_THRESHOLD || '') || DEFAULT_WATCHER_CONFIG.changeThreshold,
+        maxRetries: parseInt(process.env.WATCHER_MAX_RETRIES || '') || DEFAULT_WATCHER_CONFIG.maxRetries
+    };
+
+    // Setup cleanup manager
+    const cleanup = new DesktopWatcherCleanup();
+    
+    // Ensure tmp directory exists
+    try {
+        if (!fs.existsSync('/tmp')) {
+            fs.mkdirSync('/tmp', { recursive: true });
+        }
+    } catch (error) {
+        console.error('Error ensuring /tmp directory exists:', error);
+        return { success: false, message: 'Failed to create temporary directory' };
+    }
+
+    console.log(`Watching desktop with config:`, {
+        maxDuration: `${config.maxDuration / 1000}s`,
+        baseInterval: `${config.baseInterval / 1000}s`,
+        changeThreshold: `${config.changeThreshold}%`
+    });
+    
     const message = `Gofer started watching the desktop for changes`;
     if (currentContext === 'telegram') {
-        bot.sendMessage(process.env.CHAT_ID!, message);
+        safeSendMessage(bot, message);
     } else {
         console.log(`[REPL] ${message}`);
     }
 
+    // Start system inhibitor
     const inhibitor = spawn('systemd-inhibit', [
         '--what=idle:sleep:handle-lid-switch',
         '--why=Gofer desktop watch',
         'sleep', 'infinity'
     ], { stdio: 'ignore' });
-
-    await executeCommand(`spectacle -m -b -n -o /tmp/startImage.png`);
-    const startImage = PNG.sync.read(fs.readFileSync(`/tmp/startImage.png`));
-    const startImageBase64 = fs.readFileSync(`/tmp/startImage.png`, 'base64');
-
-    while (true) {
+    
+    cleanup.addResource(() => {
         try {
-            await new Promise(resolve => setTimeout(resolve, 60000));
-
-            await executeCommand(`spectacle -m -b -n -o /tmp/latestImage.png`);
-            let latestImage = PNG.sync.read(fs.readFileSync(`/tmp/latestImage.png`));
-            let latestImageBase64 = fs.readFileSync(`/tmp/latestImage.png`, 'base64');
-            const { width, height } = startImage;
-
-            if (latestImage.width !== width || latestImage.height !== height) {
-                console.error("Screenshot dimensions mismatch. Skipping analysis for this frame.");
-                continue;
+            if (!inhibitor.killed) {
+                inhibitor.kill('SIGTERM');
+                setTimeout(() => {
+                    if (!inhibitor.killed) {
+                        inhibitor.kill('SIGKILL');
+                    }
+                }, 5000);
             }
+        } catch (error) {
+            console.error('Error killing inhibitor:', error);
+        }
+    });
 
-            const diff = new PNG({ width, height });
-            const pixelDiff = pixelmatch(
-                startImage.data,
-                latestImage.data,
-                diff.data,
-                width,
-                height,
-                { threshold: 0.1 }
-            );
-            const changePercentage = (pixelDiff / (width * height)) * 100;
+    // Capture initial screenshot with retry logic
+    let startImage: PNG | null = null;
+    let startImageBase64: string = '';
+    
+    for (let attempt = 0; attempt < config.maxRetries; attempt++) {
+        try {
+            await executeCommand(`spectacle -m -b -n -o /tmp/startImage.png`);
+            
+            if (!fs.existsSync('/tmp/startImage.png')) {
+                throw new Error('Start screenshot file not found');
+            }
+            
+            startImage = PNG.sync.read(fs.readFileSync('/tmp/startImage.png'));
+            startImageBase64 = fs.readFileSync('/tmp/startImage.png', 'base64');
+            
+            // Clean up temp file
+            cleanup.addResource(() => {
+                try {
+                    if (fs.existsSync('/tmp/startImage.png')) {
+                        fs.unlinkSync('/tmp/startImage.png');
+                    }
+                } catch (error) {
+                    console.error('Error cleaning up start image:', error);
+                }
+            });
+            
+            break;
+        } catch (error: any) {
+            console.error(`Screenshot attempt ${attempt + 1} failed:`, error);
+            if (attempt === config.maxRetries - 1) {
+                cleanup.cleanup();
+                const errorMessage = 'Failed to capture initial screenshot after multiple attempts';
+                if (currentContext === 'telegram') {
+                    safeSendMessage(bot, errorMessage);
+                } else {
+                    console.log(`[REPL] ${errorMessage}`);
+                }
+                return { success: false, message: errorMessage };
+            }
+            // Wait before retry
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+    }
 
-            console.log(`Change percentage: ${changePercentage.toFixed(2)}%`);
+    // Setup timeout
+    const startTime = Date.now();
+    const watchTimeout = setTimeout(() => {
+        console.log('Desktop watching timed out');
+        cleanup.cleanup();
+    }, config.maxDuration);
+    
+    cleanup.addResource(() => clearTimeout(watchTimeout));
 
-            if (changePercentage > .5) {
-                // Get the configured provider and model
-                const provider = process.env.GOFER_PROVIDER || 'openai';
-                const watcherModel = process.env.WATCHER_MODEL || process.env.GOFER_MODEL || 'gpt-4o-mini';
+    // Main watching loop with exponential backoff
+    let currentInterval = config.baseInterval;
+    let consecutiveFailures = 0;
+    
+    try {
+        while (Date.now() - startTime < config.maxDuration) {
+            try {
+                await new Promise(resolve => setTimeout(resolve, currentInterval));
+
+                // Check if we've been stopped
+                // Check if cleanup has been triggered
+                if (cleanup.isCleaned()) {
+                    return { success: false, message: 'Desktop watching was stopped' };
+                }
+
+                // Capture latest screenshot
+                await executeCommand(`spectacle -m -b -n -o /tmp/latestImage.png`);
+                
+                if (!fs.existsSync('/tmp/latestImage.png')) {
+                    throw new Error('Latest screenshot file not found');
+                }
+                
+                let latestImage: PNG;
+                let latestImageBase64: string;
                 
                 try {
-                    const providerModel = getRawProviderModel(provider, watcherModel);
-                    
-                    const result = await generateText({
-                        model: providerModel,
-                        messages: [
-                            {
-                                role: "user",
-                                content: [
-                                    { type: "text", text: `Has the task been completed based on the desktop changes? The task is: ${task}. The start image is first, then the latest image. Reply with ONLY "yes" or "no" without any other text.` },
-                                    { type: "image", image: startImageBase64 },
-                                    { type: "image", image: latestImageBase64 }
-                                ]
-                            }
-                        ]
-                    });
-
-                    console.log("AI analysis result:", result);
-
-                    const finalResult = result.text;
-                    const completionKeywords = ["yes", "true", "completed", "finished", "done", "success", "ok"];
-                    
-                    if (typeof finalResult === 'string' && completionKeywords.some(keyword => 
-                        finalResult.toLowerCase().includes(keyword)
-                    )) {
-                        console.log("Task completed! Stopping desktop watch.");
-                        inhibitor.kill();
-                        const message = `Gofer stopped watching the desktop for changes. The final screenshot is attached.`;
-                        if (currentContext === 'telegram') {
-                            bot.sendMessage(process.env.CHAT_ID!, message);
-                            bot.sendDocument(process.env.CHAT_ID!, `/tmp/latestImage.png`);
-                        } else {
-                            console.log(`[REPL] ${message}`);
-                            console.log(`[REPL] Screenshot saved to: /tmp/latestImage.png`);
+                    latestImage = PNG.sync.read(fs.readFileSync('/tmp/latestImage.png'));
+                    latestImageBase64 = fs.readFileSync('/tmp/latestImage.png', 'base64');
+                } finally {
+                    // Clean up temp file immediately
+                    try {
+                        if (fs.existsSync('/tmp/latestImage.png')) {
+                            fs.unlinkSync('/tmp/latestImage.png');
                         }
-                        return { success: true, message: "Desktop task completed. Watcher said: " + finalResult };
-                    }
-                } catch (providerError) {
-                    console.error("Provider failed, falling back to OpenAI:", providerError);
-                    
-                    // Fallback to OpenAI if provider fails
-                    const OpenAI = (await import('openai')).default;
-                    const fallbackOpenai = new OpenAI();
-                    
-                    const result = await fallbackOpenai.responses.create({
-                        model: watcherModel,
-                        input: [
-                            {
-                                role: "user",
-                                content: [
-                                    { type: "input_text", text: `Has the task been completed based on the desktop changes? The task is: ${task}. The start image is first, then the latest image. Reply with ONLY "yes" or "no" without any other text.` },
-                                    { type: "input_image", image_url: `data:image/png;base64,${startImageBase64}`, detail: "auto" },
-                                    { type: "input_image", image_url: `data:image/png;base64,${latestImageBase64}`, detail: "auto" }
-                                ]
-                            }
-                        ]
-                    });
-
-                    console.log("AI analysis result (fallback):", result);
-
-                    const finalResult = (result as any)?.final;
-                    const completionKeywords = ["yes", "true", "completed", "finished", "done", "success", "ok"];
-                    
-                    if (typeof finalResult === 'string' && completionKeywords.some(keyword => 
-                        finalResult.toLowerCase().includes(keyword)
-                    )) {
-                        console.log("Task completed! Stopping desktop watch.");
-                        inhibitor.kill();
-                        const message = `Gofer stopped watching the desktop for changes. The final screenshot is attached.`;
-                        if (currentContext === 'telegram') {
-                            bot.sendMessage(process.env.CHAT_ID!, message);
-                            bot.sendDocument(process.env.CHAT_ID!, `/tmp/latestImage.png`);
-                        } else {
-                            console.log(`[REPL] ${message}`);
-                            console.log(`[REPL] Screenshot saved to: /tmp/latestImage.png`);
-                        }
-                        return { success: true, message: "Desktop task completed. Watcher said: " + finalResult };
+                    } catch (cleanupError) {
+                        console.error('Error cleaning up latest image:', cleanupError);
                     }
                 }
+                
+                if (!startImage || !startImageBase64) {
+                    console.error("Start image not available, stopping watch");
+                    break;
+                }
+                
+                const { width, height } = startImage;
+
+                if (latestImage.width !== width || latestImage.height !== height) {
+                    console.warn("Screenshot dimensions mismatch. Skipping analysis for this frame.");
+                    consecutiveFailures++;
+                    currentInterval = Math.min(currentInterval * 1.5, config.maxInterval);
+                    continue;
+                }
+
+                // Calculate pixel differences
+                const diff = new PNG({ width, height });
+                const pixelDiff = pixelmatch(
+                    startImage.data,
+                    latestImage.data,
+                    diff.data,
+                    width,
+                    height,
+                    { threshold: 0.1 }
+                );
+                const changePercentage = (pixelDiff / (width * height)) * 100;
+
+                console.log(`Change: ${changePercentage.toFixed(2)}% (threshold: ${config.changeThreshold}%)`);
+
+                // Reset interval on successful operation
+                consecutiveFailures = 0;
+                currentInterval = config.baseInterval;
+
+                if (changePercentage > config.changeThreshold) {
+                    // Analyze with AI
+                    const result = await analyzeDesktopChange(task, startImageBase64, latestImageBase64);
+                    
+                    if (result.completed) {
+                        console.log("Task completed! Stopping desktop watch.");
+                        cleanup.cleanup();
+                        
+                        const successMessage = `Gofer stopped watching the desktop for changes. Task completed.`;
+                        if (currentContext === 'telegram') {
+                            safeSendMessage(bot, successMessage);
+                        } else {
+                            console.log(`[REPL] ${successMessage}`);
+                        }
+                        return { success: true, message: "Desktop task completed. AI result: " + result.analysis };
+                    }
+                }
+                
+            } catch (error) {
+                console.error("Error in watch loop:", error);
+                consecutiveFailures++;
+                
+                // Exponential backoff for failures
+                currentInterval = Math.min(currentInterval * Math.pow(2, consecutiveFailures), config.maxInterval);
+                
+                if (consecutiveFailures >= config.maxRetries) {
+                    cleanup.cleanup();
+                    const errorMessage = `Desktop watching failed after ${config.maxRetries} consecutive failures`;
+                    if (currentContext === 'telegram') {
+                        safeSendMessage(bot, errorMessage);
+                    } else {
+                        console.log(`[REPL] ${errorMessage}`);
+                    }
+                    return { success: false, message: errorMessage };
+                }
             }
-        } catch (error: any) {
-            console.error("Error in watch loop:", error);
-            inhibitor.kill();
-            const message = `An error caused Gofer to stop watching the desktop for changes`;
-            if (currentContext === 'telegram') {
-                bot.sendMessage(process.env.CHAT_ID!, message);
-            } else {
-                console.log(`[REPL] ${message}`);
-            }
-            return { success: false, message: `Error watching desktop: ${error.message}` };
+        }
+        
+        // Timeout reached
+        cleanup.cleanup();
+        const timeoutMessage = `Desktop watching timed out after ${config.maxDuration / 1000} seconds`;
+        if (currentContext === 'telegram') {
+            safeSendMessage(bot, timeoutMessage);
+        } else {
+            console.log(`[REPL] ${timeoutMessage}`);
+        }
+        return { success: false, message: timeoutMessage };
+        
+    } catch (error: any) {
+        cleanup.cleanup();
+        const errorMessage = `Desktop watching failed: ${error.message}`;
+        if (currentContext === 'telegram') {
+            telegramManager.safeSendMessage(errorMessage);
+        } else {
+            console.log(`[REPL] ${errorMessage}`);
+        }
+        return { success: false, message: errorMessage };
+    }
+}
+
+/**
+ * Analyzes desktop changes using AI to determine task completion
+ */
+async function analyzeDesktopChange(task: string, startImageBase64: string, latestImageBase64: string): Promise<{completed: boolean, analysis: string}> {
+    const provider = process.env.GOFER_PROVIDER || 'openai';
+    const watcherModel = process.env.WATCHER_MODEL || process.env.GOFER_MODEL || 'gpt-4o-mini';
+    
+    try {
+        const providerModel = getRawProviderModel(provider, watcherModel);
+        
+        const result = await generateText({
+            model: providerModel,
+            messages: [
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: `Has the task been completed based on the desktop changes? The task is: ${task}. The start image is first, then the latest image. Reply with ONLY "yes" or "no" without any other text.` },
+                        { type: "image", image: startImageBase64 },
+                        { type: "image", image: latestImageBase64 }
+                    ]
+                }
+            ]
+        });
+
+        console.log("AI analysis result:", result);
+
+        const finalResult = result.text;
+        const completionKeywords = ["yes", "true", "completed", "finished", "done", "success", "ok"];
+        
+        const completed = typeof finalResult === 'string' && completionKeywords.some(keyword => 
+            finalResult.toLowerCase().includes(keyword)
+        );
+        
+        return { completed, analysis: finalResult };
+        
+    } catch (providerError) {
+        console.error("Provider failed, falling back to OpenAI:", providerError);
+        
+        try {
+            // Fallback to OpenAI if provider fails
+            const OpenAI = (await import('openai')).default;
+            const fallbackOpenai = new OpenAI();
+            
+            const result = await fallbackOpenai.responses.create({
+                model: watcherModel,
+                input: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "input_text", text: `Has the task been completed based on the desktop changes? The task is: ${task}. The start image is first, then the latest image. Reply with ONLY "yes" or "no" without any other text.` },
+                            { type: "input_image", image_url: `data:image/png;base64,${startImageBase64}`, detail: "auto" },
+                            { type: "input_image", image_url: `data:image/png;base64,${latestImageBase64}`, detail: "auto" }
+                        ]
+                    }
+                ]
+            });
+
+            console.log("AI analysis result (fallback):", result);
+
+            const finalResult = (result as any)?.final;
+            const completionKeywords = ["yes", "true", "completed", "finished", "done", "success", "ok"];
+            
+            const completed = typeof finalResult === 'string' && completionKeywords.some(keyword => 
+                finalResult.toLowerCase().includes(keyword)
+            );
+            
+            return { completed, analysis: finalResult };
+            
+        } catch (fallbackError) {
+            console.error("Both provider and fallback failed:", fallbackError);
+            return { completed: false, analysis: "AI analysis failed" };
         }
     }
 }
@@ -492,17 +892,66 @@ export async function watchDesktop(task: string) {
  */
 export async function promptUser(prompt: string) {
     if (currentContext === 'telegram') {
-        safeSendMessage(bot, `Gofer asked: ${prompt}`);
+        console.log("promptUser called with prompt:", prompt);
         
-        return new Promise((resolve) => {
+        const success = await telegramManager.safeSendMessage(`Gofer asked: ${prompt}`);
+        if (!success) {
+            return { success: false, response: "Failed to send prompt message" };
+        }
+        
+        return new Promise<{success: boolean, response: string}>((resolve) => {
+            const chatId = getTargetChatId();
+            const bot = telegramManager.getBot();
+            
+            console.log("promptUser: Setting up message handler for chatId =", chatId);
+            
+            if (!chatId || !bot) {
+                console.log("promptUser: No valid chat ID or bot, resolving with error");
+                resolve({ success: false, response: "Telegram not available" });
+                return;
+            }
+
+            let isResolved = false;
+            
             const messageHandler = (msg: any) => {
-                if (msg.chat.id.toString() === process.env.CHAT_ID) {
+                console.log("=== MESSAGE HANDLER TRIGGERED ===");
+                console.log("Received message from chat:", msg.chat.id);
+                console.log("Expected chat ID:", chatId);
+                console.log("Message text:", msg.text);
+                
+                // Accept responses only from the correct chat
+                const isValidChat = msg.chat.id.toString() === chatId;
+                console.log("Chat ID match:", isValidChat);
+                
+                if (isValidChat && !isResolved) {
+                    console.log("VALID RESPONSE - Resolving promise with:", msg.text);
+                    isResolved = true;
                     bot.removeListener('message', messageHandler);
-                    resolve({ success: true, response: msg.text });
+                    clearTimeout(timeoutHandle);
+                    resolve({ success: true, response: msg.text || "" });
+                } else if (!isValidChat) {
+                    console.log("INVALID CHAT - Ignoring message from chat", msg.chat.id, "(expected:", chatId + ")");
                 }
             };
-
+            
+            console.log("Adding message handler to bot...");
             bot.on('message', messageHandler);
+            console.log("Message handler added successfully");
+            
+            // Add timeout to prevent hanging forever
+            const timeoutMs = parseInt(process.env.PROMPT_TIMEOUT_MS || '300000'); // 5 minutes default
+            const timeoutHandle = setTimeout(() => {
+                console.log("⏰ TIMEOUT: No response received after", timeoutMs / 1000, "seconds");
+                console.log("Current activeChatId:", activeChatId);
+                console.log("Expected chatId:", chatId);
+                console.log("REVIEW_MODE:", process.env.REVIEW_MODE);
+                
+                if (!isResolved) {
+                    isResolved = true;
+                    bot.removeListener('message', messageHandler);
+                    resolve({ success: false, response: "Timeout: No response received" });
+                }
+            }, timeoutMs);
         });
     } else {
         // REPL context - use readline for user input
@@ -512,7 +961,7 @@ export async function promptUser(prompt: string) {
             output: process.stdout
         });
 
-        return new Promise((resolve) => {
+        return new Promise<{success: boolean, response: string}>((resolve) => {
             console.log(`[REPL] Gofer asks: ${prompt}`);
             rl.question('Your response: ', (answer: string) => {
                 rl.close();
@@ -527,7 +976,7 @@ export async function promptUser(prompt: string) {
  */
 export async function updateUser(message: string) {
     if (currentContext === 'telegram') {
-        safeSendMessage(bot, `Gofer sent an update: ${message}`);
+        await telegramManager.safeSendMessage(`Gofer sent an update: ${message}`);
     } else {
         console.log(`[REPL] Gofer update: ${message}`);
     }
@@ -539,7 +988,7 @@ export async function updateUser(message: string) {
  */
 export async function done(message: string) {
     if (currentContext === 'telegram') {
-        safeSendMessage(bot, `Task completed: ${message}`);
+        await telegramManager.safeSendMessage(`Task completed: ${message}`);
     } else {
         console.log(`[REPL] Task completed: ${message}`);
     }
@@ -626,15 +1075,35 @@ function isAuthorized(msg: any): { authorized: boolean; message?: string } {
     }
 }
 
-export function setupTelegramBot() {
-
+export async function setupTelegramBot() {
     if (process.env.ENABLE_TELEGRAM !== 'true') {
-        return;
+        console.log("Telegram is disabled via ENABLE_TELEGRAM setting");
+        return false;
     }
 
-    // Enable polling for the bot
-    bot.setWebHook('');
-    bot.startPolling();
+    // Initialize and start the bot
+    const initialized = await telegramManager.initializeBot();
+    if (!initialized) {
+        console.error("Failed to initialize Telegram bot");
+        return false;
+    }
+
+    const pollingStarted = await telegramManager.startPolling();
+    if (!pollingStarted) {
+        console.error("Failed to start Telegram bot polling");
+        return false;
+    }
+
+    const bot = telegramManager.getBot();
+    if (!bot) {
+        console.error("Bot is not available after initialization");
+        return false;
+    }
+
+    // Add global message logger to debug message flow
+    bot.on('message', (msg) => {
+        console.log("GLOBAL: Message received from chat", msg.chat.id + ":", `'${msg.text || '[no text]'}'`);
+    });
 
     bot.onText(/\/start/, (msg: any) => {
         // In review mode, respond to any chat. In normal mode, only respond to authorized chat

@@ -23,10 +23,10 @@ program
   .action(() => {
     const providers = listProviders();
     
-    console.log('\n🤖 Available AI Providers:\n');
+    console.log('\nAvailable AI Providers:\n');
     
     providers.forEach(provider => {
-      console.log(`📋 ${provider.displayName} (${provider.name})`);
+      console.log(`- ${provider.displayName} (${provider.name})`);
       console.log(`   Models: ${provider.models.join(', ')}`);
       console.log('');
     });
@@ -41,8 +41,8 @@ program
     const config = getProviderConfig(provider);
     
     if (!config) {
-      console.error(`❌ Provider '${provider}' not found`);
-      console.log('\n📋 Available providers:');
+      console.error(`[ERROR] Provider '${provider}' not found`);
+      console.log('\n[INFO] Available providers:');
       listProviders().forEach(p => console.log(`   - ${p.name}`));
       process.exit(1);
     }
@@ -50,8 +50,8 @@ program
     const selectedModel = model || config.defaultModel;
     
     if (!config.models.includes(selectedModel)) {
-      console.error(`❌ Model '${selectedModel}' not available for ${config.displayName}`);
-      console.log(`\n📋 Available models for ${config.displayName}:`);
+      console.error(`[ERROR] Model '${selectedModel}' not available for ${config.displayName}`);
+      console.log(`\nAvailable models for ${config.displayName}:`);
       config.models.forEach(m => console.log(`   - ${m}`));
       process.exit(1);
     }
@@ -80,7 +80,7 @@ program
     
     fs.writeFileSync(envPath, envContent);
     
-    console.log(`✅ Configuration updated:`);
+    console.log(`Configuration updated:`);
     console.log(`   Provider: ${config.displayName}`);
     console.log(`   Model: ${selectedModel}`);
     console.log(`   API Key Variable: ${config.apiKeyEnvVar}`);
@@ -88,9 +88,9 @@ program
     if (config.requiresApiKey) {
       const apiKey = process.env[config.apiKeyEnvVar];
       if (!apiKey) {
-        console.log(`\n⚠️  Don't forget to set ${config.apiKeyEnvVar} in your .env.local file!`);
+        console.log(`\n[WARNING] Don't forget to set ${config.apiKeyEnvVar} in your .env.local file!`);
       } else {
-        console.log(`\n✅ API key is already configured for ${config.displayName}`);
+        console.log(`\nAPI key is already configured for ${config.displayName}`);
       }
     }
   });
@@ -102,7 +102,7 @@ program
     const envPath = path.join(__dirname, '../.env.local');
     
     if (!fs.existsSync(envPath)) {
-      console.log('❌ No .env.local file found');
+      console.log('[ERROR] No .env.local file found');
       process.exit(1);
     }
     
@@ -116,11 +116,11 @@ program
     const config = getProviderConfig(currentProvider);
     
     if (!config) {
-      console.log(`❌ Current provider '${currentProvider}' is not valid`);
+      console.log(`[ERROR] Current provider '${currentProvider}' is not valid`);
       process.exit(1);
     }
     
-    console.log(`\n🤖 Current Configuration:`);
+    console.log(`\nCurrent Configuration:`);
     console.log(`   Provider: ${config.displayName} (${config.name})`);
     console.log(`   Model: ${currentModel}`);
     console.log(`   API Key Variable: ${config.apiKeyEnvVar}`);
@@ -128,9 +128,9 @@ program
     if (config.requiresApiKey) {
       const apiKey = process.env[config.apiKeyEnvVar];
       if (apiKey) {
-        console.log(`   API Key: ✅ Configured`);
+        console.log(`   API Key: Configured`);
       } else {
-        console.log(`   API Key: ❌ Not found (set ${config.apiKeyEnvVar})`);
+        console.log(`   API Key: Not found (set ${config.apiKeyEnvVar})`);
       }
     }
   });

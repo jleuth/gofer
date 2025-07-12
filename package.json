@@ -18,11 +18,11 @@
     "gofer": "./bin/gofer.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r src/prompts dist/",
     "test": "echo \"Error: no test specified\" && exit 1",
     "providers": "tsx src/provider-cli.ts",
     "gofer": "tsx src/repl.tsx",
-    "start": "tsx src/daemon.ts"   
+    "start": "tsx src/daemon.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",
@@ -54,6 +54,7 @@
   },
   "devDependencies": {
     "@types/node-telegram-bot-api": "^0.64.9",
-    "@types/react": "^19.1.8"
+    "@types/react": "^19.1.8",
+    "typescript-transform-paths": "^3.5.5"
   }
 }

@@ -64,10 +64,13 @@ else
     rm -rf "$INSTALL_DIR/node_modules" 2>/dev/null || true
 fi
 
-# 4. Install deps
+# 4. Install deps and build
 log_info "Installing dependencies..."
 cd "$INSTALL_DIR"
-npm install --production
+npm install
+
+log_info "Building TypeScript..."
+npm run build
 
 # 5. Write user‐service unit
 log_info "Creating systemd service..."
@@ -79,7 +82,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=$INSTALL_DIR
-ExecStart=$(command -v npx) tsx $INSTALL_DIR/src/daemon.ts
+ExecStart=$(command -v node) $INSTALL_DIR/dist/daemon.js
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
@@ -107,11 +110,11 @@ fi
 log_info "Installing REPL wrapper..."
 cat > "$BIN_DIR/gofer" <<EOL
 #!/usr/bin/env bash
-exec npx tsx $INSTALL_DIR/src/repl.ts "\$@"
+exec node $INSTALL_DIR/dist/repl.js "\$@"
 EOL
 chmod +x "$BIN_DIR/gofer"
 
 # 8. Done
-log_info "✔ Installed Gofer daemon (as $USER) and REPL at '$BIN_DIR/gofer'."
+log_info "Installed Gofer daemon (as $USER) and REPL at '$BIN_DIR/gofer'."
 log_info "  Make sure '$BIN_DIR' is in your PATH."
 log_info "  Service status: systemctl --user status gofer.service"
